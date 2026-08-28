@@ -26,6 +26,10 @@
 #define NewUserItemUPP NewUserItemProc
 #endif
 
+/* Not declared by Retro68's headers; 3 is Geneva's well-known classic
+ * system font ID (systemFont=0, applFont=1, newYork=2, geneva=3, ...). */
+#define kFontGeneva 3
+
 /* ---------------------------------------------------------------------- */
 /* Menu IDs (must match iWordle.r)                                        */
 /* ---------------------------------------------------------------------- */
@@ -166,25 +170,32 @@ static void GetBackspaceKeyRect(Rect *outRect)
 /* Drawing                                                                 */
 /* ---------------------------------------------------------------------- */
 
+/* RGBForeColor() takes a non-const RGBColor*; our palette entries are
+ * const, so route through a local copy instead of casting away const. */
+static void SetForeColor(RGBColor color)
+{
+    RGBForeColor(&color);
+}
+
 static void DrawBevelRect(const Rect *r, RGBColor fill)
 {
     Rect inner = *r;
 
-    RGBForeColor(&fill);
+    SetForeColor(fill);
     PaintRect(r);
 
     InsetRect(&inner, 1, 1);
 
-    RGBForeColor(&kColorWhite);
+    SetForeColor(kColorWhite);
     MoveTo(inner.left, inner.bottom - 1);
     LineTo(inner.left, inner.top);
     LineTo(inner.right - 1, inner.top);
 
-    RGBForeColor(&kColorBevelLo);
+    SetForeColor(kColorBevelLo);
     LineTo(inner.right - 1, inner.bottom - 1);
     LineTo(inner.left, inner.bottom - 1);
 
-    RGBForeColor(&kColorBorder);
+    SetForeColor(kColorBorder);
     FrameRect(r);
 }
 
@@ -198,10 +209,10 @@ static void DrawCenteredLetter(const Rect *r, char letter, short fontSize, const
     s[0] = 1;
     s[1] = (unsigned char)letter;
 
-    TextFont(geneva);
+    TextFont(kFontGeneva);
     TextSize(fontSize);
     TextFace(bold);
-    RGBForeColor(color);
+    SetForeColor(*color);
 
     w = StringWidth(s);
     MoveTo(r->left + ((r->right - r->left) - w) / 2,
@@ -228,11 +239,11 @@ static void DrawTile(short row, short col)
 
     RGBForeColor(&fill);
     PaintRect(&r);
-    RGBForeColor(&kColorBorder);
+    SetForeColor(kColorBorder);
     FrameRect(&r);
 
     DrawCenteredLetter(&r, letter, 28, &textColor);
-    RGBForeColor(&kColorBlack);
+    SetForeColor(kColorBlack);
 }
 
 static void DrawKey(const Rect *r, char letter)
@@ -250,7 +261,7 @@ static void DrawKey(const Rect *r, char letter)
 
     DrawBevelRect(r, fill);
     DrawCenteredLetter(r, letter, 16, &textColor);
-    RGBForeColor(&kColorBlack);
+    SetForeColor(kColorBlack);
 }
 
 static void DrawBoard(void)
@@ -284,22 +295,22 @@ static void DrawKeyboard(void)
         s[0] = 2;
         s[1] = '<';
         s[2] = '-';
-        TextFont(geneva);
+        TextFont(kFontGeneva);
         TextSize(16);
         TextFace(bold);
-        RGBForeColor(&kColorBorder);
+        SetForeColor(kColorBorder);
         w = StringWidth(s);
         MoveTo(r.left + ((r.right - r.left) - w) / 2, r.top + (r.bottom - r.top) / 2 + 5);
         DrawString(s);
     }
-    RGBForeColor(&kColorBlack);
+    SetForeColor(kColorBlack);
 }
 
 static void EraseBackground(WindowPtr w)
 {
     Rect r;
     GetPortBounds(GetWindowPort(w), &r);
-    RGBForeColor(&kColorWindowBG);
+    SetForeColor(kColorWindowBG);
     PaintRect(&r);
 }
 
