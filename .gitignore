@@ -1,0 +1,16 @@
+# Local design reference, not part of the repo
+Wordle_UI.png
+
+# CMake / Retro68 build output
+build/
+*.dsk
+*.APPL
+*.bin
+*.ad
+*.rsrc.bin
+*.code.bin
+*.xcoff
+*.pef
+
+# macOS
+.DS_Store

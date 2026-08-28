@@ -1,0 +1,37 @@
+name: Build (Mac OS 9 PowerPC / Carbon)
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build with Retro68 (Carbon / PowerPC toolchain)
+        run: |
+          docker run --rm \
+            -v "${{ github.workspace }}:/root/iWordle" \
+            -w /root/iWordle \
+            -i ghcr.io/autc04/retro68 /bin/bash <<'EOF'
+          set -euo pipefail
+          mkdir -p build
+          cd build
+          cmake .. -DCMAKE_TOOLCHAIN_FILE=/Retro68-build/toolchain/powerpc-apple-macos/cmake/retrocarbon.toolchain.cmake
+          cmake --build . --verbose
+          ls -la
+          EOF
+
+      - name: Upload disk image + app bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: iWordle-mac-os-9-ppc
+          path: |
+            build/iWordle.dsk
+            build/iWordle.APPL
+            build/iWordle.bin
+          if-no-files-found: error
