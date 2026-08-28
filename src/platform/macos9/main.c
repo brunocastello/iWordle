@@ -129,7 +129,6 @@ static void HandleMouseDown(EventRecord *event);
 static void HandleKeyDown(EventRecord *event);
 static void HandleUpdate(EventRecord *event);
 static void HandleEvent(EventRecord *event);
-static void DisableEditMenuItems(void);
 static void RunEventLoop(void);
 
 /* ---------------------------------------------------------------------- */
@@ -615,14 +614,6 @@ static void HandleEvent(EventRecord *event)
     }
 }
 
-static void DisableEditMenuItems(void)
-{
-    MenuHandle m = GetMenuHandle(kMenuEdit);
-    short i;
-    if (!m) return;
-    for (i = 1; i <= 6; i++) DisableItem(m, i);
-}
-
 static void RunEventLoop(void)
 {
     EventRecord event;
@@ -658,7 +649,6 @@ int main(void)
         }
     }
     DrawMenuBar();
-    DisableEditMenuItems();
 
     gWindow = GetNewCWindow(128, NULL, (WindowPtr)-1);
     ShowWindow(gWindow);
