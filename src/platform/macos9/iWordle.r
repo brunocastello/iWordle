@@ -86,8 +86,6 @@ resource 'WIND' (128, "Wordle9") {
 /* Reusable message dialog (New Game confirm, Give Up, Win / Lose, About) */
 /* ---------------------------------------------------------------------- */
 
-pascal void ButtonFrameProc(DialogRef dlg, DialogItemIndex itemNo);
-
 resource 'DLOG' (200, "Message") {
     { 80, 130, 260, 530 },
     dBoxProc,
