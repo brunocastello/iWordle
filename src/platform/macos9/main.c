@@ -192,7 +192,7 @@ static void SetBackColor(RGBColor color)
  * draw when it's shown. Must be called before the modal event loop. */
 static void SetDialogPlatinumBackground(DialogPtr dlg)
 {
-    SetPortDialogPort(dlg);
+    SetPortWindowPort((WindowPtr)dlg);
     SetBackColor(kColorWindowBG);
 }
 
