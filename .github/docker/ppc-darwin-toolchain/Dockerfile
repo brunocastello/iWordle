@@ -41,12 +41,13 @@ RUN apt-get update -q && \
     && apt-get clean -y \
     && rm -rf /var/lib/apt/lists/*
 
-# Pinned CMake 3.28.3, not whatever ubuntu:latest's rolling apt repo
-# currently ships (CMake 4.x at time of writing) -- the pinned
-# llvm-project commit below relies on policies (e.g. CMP0051 set to OLD)
-# that CMake 4.x has fully removed support for, not just a minimum
-# required-version check -DCMAKE_POLICY_VERSION_MINIMUM can paper over.
-RUN wget -q https://github.com/Kitware/CMake/releases/download/v3.28.3/cmake-3.28.3-linux-x86_64.sh -O /tmp/cmake-install.sh && \
+# Pinned CMake 3.22.6, not whatever ubuntu:latest's rolling apt repo
+# currently ships (CMake 4.x at time of writing). The pinned llvm-project
+# commit relies on policies CMake 4.x has fully removed support for (e.g.
+# CMP0051 set to OLD), and also uses the FindPythonInterp module, which
+# CMake 3.27+ deprecated via CMP0148 -- 3.28.3 was tried first and still
+# hit that. 3.22.6 predates both issues.
+RUN wget -q https://github.com/Kitware/CMake/releases/download/v3.22.6/cmake-3.22.6-linux-x86_64.sh -O /tmp/cmake-install.sh && \
     chmod +x /tmp/cmake-install.sh && \
     /tmp/cmake-install.sh --skip-license --prefix=/usr/local && \
     rm /tmp/cmake-install.sh
