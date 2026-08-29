@@ -22,8 +22,13 @@ static unsigned long NextRandom(void)
 int WordleIsValidWord(const char *word5)
 {
     int i;
-    for (i = 0; i < WORDLE_DICTIONARY_COUNT; i++) {
-        if (strncmp(word5, kWordleDictionary[i], WORDLE_WORD_LENGTH) == 0) {
+    for (i = 0; i < WORDLE_ANSWER_COUNT; i++) {
+        if (strncmp(word5, kWordleAnswers[i], WORDLE_WORD_LENGTH) == 0) {
+            return 1;
+        }
+    }
+    for (i = 0; i < WORDLE_VALID_GUESS_COUNT; i++) {
+        if (strncmp(word5, kWordleValidGuesses[i], WORDLE_WORD_LENGTH) == 0) {
             return 1;
         }
     }
@@ -42,9 +47,9 @@ static void ResetRow(WordleRow *row)
 void WordleNewGame(WordleGame *game)
 {
     int i;
-    unsigned long pick = NextRandom() % (unsigned long)WORDLE_DICTIONARY_COUNT;
+    unsigned long pick = NextRandom() % (unsigned long)WORDLE_ANSWER_COUNT;
 
-    memcpy(game->target, kWordleDictionary[pick], WORDLE_WORD_LENGTH);
+    memcpy(game->target, kWordleAnswers[pick], WORDLE_WORD_LENGTH);
     game->target[WORDLE_WORD_LENGTH] = '\0';
 
     for (i = 0; i < WORDLE_MAX_GUESSES; i++) {

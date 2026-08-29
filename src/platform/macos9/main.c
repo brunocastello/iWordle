@@ -35,10 +35,8 @@
 /* ---------------------------------------------------------------------- */
 
 enum {
-    kMenuFile = 128,
-    kMenuEdit = 129,
-    kMenuGame = 130,
-    kMenuHelp = 131
+    kMenuApple = 1,
+    kMenuFile = 128
 };
 
 /* ---------------------------------------------------------------------- */
@@ -516,17 +514,14 @@ static void HandleMenuCommand(long menuResult)
     if (menuID == 0) return;
 
     switch (menuID) {
+        case kMenuApple:
+            if (menuItem == 1) OnAbout();
+            break;
+
         case kMenuFile:
             if (menuItem == 1) OnNewGame();
-            else if (menuItem == 3) gDone = true;
-            break;
-
-        case kMenuGame:
-            if (menuItem == 1) OnGiveUp();
-            break;
-
-        case kMenuHelp:
-            if (menuItem == 1) OnAbout();
+            else if (menuItem == 2) OnGiveUp();
+            else if (menuItem == 4) gDone = true;
             break;
 
         default:

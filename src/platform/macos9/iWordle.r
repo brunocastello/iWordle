@@ -14,7 +14,18 @@
 /* ---------------------------------------------------------------------- */
 
 resource 'MBAR' (128) {
-    { 128, 129, 130, 131 };
+    { 1, 128 };
+};
+
+resource 'MENU' (1, preload) {
+    1,
+    textMenuProc,
+    allEnabled,
+    enabled,
+    apple,
+    {
+        "About iWordle", noIcon, noKey, noMark, plain;
+    }
 };
 
 resource 'MENU' (128, "File") {
@@ -25,46 +36,9 @@ resource 'MENU' (128, "File") {
     "File",
     {
         "New Game", noIcon, "N", noMark, plain;
+        "Give Up", noIcon, noKey, noMark, plain;
         "-", noIcon, noKey, noMark, plain;
         "Quit", noIcon, "Q", noMark, plain;
-    }
-};
-
-resource 'MENU' (129, "Edit") {
-    129,
-    textMenuProc,
-    allEnabled,
-    enabled,
-    "Edit",
-    {
-        "Undo", noIcon, "Z", noMark, plain;
-        "-", noIcon, noKey, noMark, plain;
-        "Cut", noIcon, "X", noMark, plain;
-        "Copy", noIcon, "C", noMark, plain;
-        "Paste", noIcon, "V", noMark, plain;
-        "Clear", noIcon, noKey, noMark, plain;
-    }
-};
-
-resource 'MENU' (130, "Game") {
-    130,
-    textMenuProc,
-    allEnabled,
-    enabled,
-    "Game",
-    {
-        "Give Up", noIcon, noKey, noMark, plain;
-    }
-};
-
-resource 'MENU' (131, "Help") {
-    131,
-    textMenuProc,
-    allEnabled,
-    enabled,
-    "Help",
-    {
-        "About iWordle", noIcon, noKey, noMark, plain;
     }
 };
 
@@ -72,13 +46,13 @@ resource 'MENU' (131, "Help") {
 /* Main document window                                                   */
 /* ---------------------------------------------------------------------- */
 
-resource 'WIND' (128, "Wordle9") {
+resource 'WIND' (128, "iWordle") {
     { 60, 80, 660, 740 },
     documentProc,
     visible,
     goAway,
     0,
-    "Wordle9",
+    "iWordle",
     0
 };
 
