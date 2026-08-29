@@ -188,6 +188,11 @@ static void SetForeColor(RGBColor color)
     RGBForeColor(&color);
 }
 
+static void SetBackColor(RGBColor color)
+{
+    RGBBackColor(&color);
+}
+
 static void DrawBevelRect(const Rect *r, RGBColor fill)
 {
     Rect inner = *r;
@@ -420,6 +425,11 @@ static void PaintFullDialogBackground(DialogRef dlg)
     Rect windowRect;
 
     GetPortBounds(GetWindowPort((WindowPtr)dlg), &windowRect);
+    /* BackColor matters here, not just ForeColor: native controls (the
+     * OK button) erase their own rounded corners using the port's
+     * BackColor, so leaving it at the default white is what caused
+     * white corner pixels around the button before. */
+    SetBackColor(kColorWindowBG);
     SetForeColor(kColorWindowBG);
     PaintRect(&windowRect);
 }
@@ -506,37 +516,39 @@ pascal void AboutContentDrawProc(DialogRef dlg, DialogItemIndex itemNo)
      * Geneva -- two distinct typefaces, not just two sizes of one. */
     TextFont(systemFont);
     TextFace(bold);
-    TextSize(18);
+    TextSize(14);
     CStrToPStr(s, "iWordle 1.0");
     DrawCenteredStringAt(midX, box.top + 56, s);
 
-    /* Everything below the title is Geneva at one consistent size;
-     * only bold/plain varies, matching the reference layout. */
     TextFont(kFontGeneva);
-    TextSize(10);
 
     TextFace(normal);
+    TextSize(12);
     CStrToPStr(s, "A native Wordle clone for Mac OS 9");
-    DrawCenteredStringAt(midX, box.top + 74, s);
+    DrawCenteredStringAt(midX, box.top + 76, s);
 
     TextFace(bold);
+    TextSize(14);
     CStrToPStr(s, "Bruno Castello");
-    DrawCenteredStringAt(midX, box.top + 100, s);
+    DrawCenteredStringAt(midX, box.top + 104, s);
 
     TextFace(normal);
+    TextSize(12);
     CStrToPStr(s, "bfcastello@hotmail.com");
-    DrawCenteredStringAt(midX, box.top + 118, s);
+    DrawCenteredStringAt(midX, box.top + 124, s);
 
     TextFace(bold);
+    TextSize(14);
     CStrToPStr(s, "Engineer: Claude Sonnet 5");
-    DrawCenteredStringAt(midX, box.top + 144, s);
+    DrawCenteredStringAt(midX, box.top + 152, s);
 
     TextFace(normal);
+    TextSize(12);
     CStrToPStr(s, "\xA9 Castello Designs, 2026");
-    DrawCenteredStringAt(midX, box.top + 170, s);
+    DrawCenteredStringAt(midX, box.top + 180, s);
 
     CStrToPStr(s, "Built with Retro68");
-    DrawCenteredStringAt(midX, box.top + 188, s);
+    DrawCenteredStringAt(midX, box.top + 200, s);
 }
 
 /* ---------------------------------------------------------------------- */

@@ -94,7 +94,7 @@ resource 'DITL' (200) {
 };
 
 resource 'DLOG' (201, "About iWordle") {
-    { 0, 0, 236, 280 },
+    { 0, 0, 256, 280 },
     dBoxProc,
     visible,
     noGoAway,
@@ -106,10 +106,10 @@ resource 'DLOG' (201, "About iWordle") {
 
 resource 'DITL' (201) {
     {
-        { 0, 0, 200, 280 },
+        { 0, 0, 214, 280 },
         UserItem { enabled };
 
-        { 204, 105, 228, 175 },
+        { 224, 105, 248, 175 },
         Button { enabled, "OK" };
     }
 };
