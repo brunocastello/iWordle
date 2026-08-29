@@ -16,6 +16,7 @@
 #include <ToolUtils.h>
 #include <TextUtils.h>
 #include <OSUtils.h>
+#include <Sound.h>
 #include <Icons.h>
 #include <AppleEvents.h>
 #include <Files.h>
@@ -712,7 +713,7 @@ static void ShowMessage(ConstStr255Param msg)
     SetDialogItem(dlg, 3, type, (Handle)NewUserItemUPP(&ButtonFrameProc), &box);
 
     DrawDialog(dlg);
-    DrawControls(dlg);
+    DrawControls((WindowPtr)dlg);
 
     do {
         ModalDialog(NewModalFilterUPP(&DismissOnEnterFilterProc), &item);
@@ -887,7 +888,7 @@ static void OnAbout(void)
     SetDialogItem(dlg, 3, type, (Handle)NewUserItemUPP(&ButtonFrameProc), &box);
 
     DrawDialog(dlg);
-    DrawControls(dlg);
+    DrawControls((WindowPtr)dlg);
 
     do {
         ModalDialog(NewModalFilterUPP(&DismissOnEnterFilterProc), &item);
@@ -958,7 +959,7 @@ static Boolean PromptForPlayerName(Str255 outName)
     SetDialogItem(dlg, 4, type, (Handle)NewUserItemUPP(&ButtonFrameProc), &box);
 
     DrawDialog(dlg);
-    DrawControls(dlg);
+    DrawControls((WindowPtr)dlg);
 
     do {
         ModalDialog(NewModalFilterUPP(&DismissOnEnterFilterProc3), &item);
@@ -1080,7 +1081,7 @@ static void OnStatistics(void)
     SetDialogItem(dlg, 4, type, (Handle)NewUserItemUPP(&ButtonFrameProc), &box);
 
     DrawDialog(dlg);
-    DrawControls(dlg);
+    DrawControls((WindowPtr)dlg);
 
     do {
         ModalDialog(NewModalFilterUPP(&DismissOnEnterFilterProc3), &item);
@@ -1093,7 +1094,7 @@ static void OnStatistics(void)
             WordleStatsClear(&gStats);
             SaveStats();
             DrawDialog(dlg);
-            DrawControls(dlg);
+            DrawControls((WindowPtr)dlg);
         }
     } while (item != 3);
 
