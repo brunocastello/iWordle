@@ -75,7 +75,7 @@ resource 'WIND' (128, "iWordle") {
 resource 'DLOG' (200, "Message") {
     { 0, 0, 140, 340 },
     dBoxProc,
-    invisible,
+    visible,
     noGoAway,
     0,
     200,
@@ -96,7 +96,7 @@ resource 'DITL' (200) {
 resource 'DLOG' (201, "About iWordle") {
     { 0, 0, 236, 280 },
     dBoxProc,
-    invisible,
+    visible,
     noGoAway,
     0,
     201,
