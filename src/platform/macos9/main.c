@@ -174,11 +174,26 @@ static void GetBackspaceKeyRect(Rect *outRect)
 /* Drawing                                                                 */
 /* ---------------------------------------------------------------------- */
 
-/* RGBForeColor() takes a non-const RGBColor*; our palette entries are
- * const, so route through a local copy instead of casting away const. */
+/* RGBForeColor()/RGBBackColor() take a non-const RGBColor*; our palette
+ * entries are const, so route through a local copy instead of casting
+ * away const. */
 static void SetForeColor(RGBColor color)
 {
     RGBForeColor(&color);
+}
+
+static void SetBackColor(RGBColor color)
+{
+    RGBBackColor(&color);
+}
+
+/* Makes a dialog's window erase to our Platinum gray (instead of the
+ * Dialog Manager's default white) on every update, including the first
+ * draw when it's shown. Must be called before the modal event loop. */
+static void SetDialogPlatinumBackground(DialogPtr dlg)
+{
+    SetPortDialogPort(dlg);
+    SetBackColor(kColorWindowBG);
 }
 
 static void DrawBevelRect(const Rect *r, RGBColor fill)
@@ -386,6 +401,7 @@ static void ShowMessage(ConstStr255Param msg)
 
     dlg = GetNewDialog(200, NULL, (WindowPtr)-1);
     if (dlg == NULL) return;
+    SetDialogPlatinumBackground(dlg);
 
     do {
         ModalDialog(NULL, &item);
@@ -431,36 +447,38 @@ pascal void AboutDrawProc(DialogRef dlg, DialogItemIndex itemNo)
     TextSize(9);
     CStrToPStr(s, "A native Wordle clone for Mac OS 9");
     w = StringWidth(s);
-    MoveTo(midX - w / 2, box.top + 68);
+    MoveTo(midX - w / 2, box.top + 72);
     DrawString(s);
 
     TextFace(bold);
     TextSize(11);
     CStrToPStr(s, "Bruno Castello");
     w = StringWidth(s);
-    MoveTo(midX - w / 2, box.top + 88);
+    MoveTo(midX - w / 2, box.top + 98);
     DrawString(s);
 
     TextFace(normal);
     TextSize(9);
     CStrToPStr(s, "bfcastello@hotmail.com");
     w = StringWidth(s);
-    MoveTo(midX - w / 2, box.top + 100);
+    MoveTo(midX - w / 2, box.top + 116);
     DrawString(s);
 
+    TextFace(bold);
     CStrToPStr(s, "Engineer: Claude Sonnet 5");
     w = StringWidth(s);
-    MoveTo(midX - w / 2, box.top + 118);
+    MoveTo(midX - w / 2, box.top + 142);
     DrawString(s);
 
+    TextFace(normal);
     CStrToPStr(s, "\xA9 Castello Designs, 2026");
     w = StringWidth(s);
-    MoveTo(midX - w / 2, box.top + 136);
+    MoveTo(midX - w / 2, box.top + 168);
     DrawString(s);
 
     CStrToPStr(s, "Built with Retro68");
     w = StringWidth(s);
-    MoveTo(midX - w / 2, box.top + 148);
+    MoveTo(midX - w / 2, box.top + 186);
     DrawString(s);
 }
 
@@ -545,6 +563,7 @@ static void OnAbout(void)
 
     dlg = GetNewDialog(201, NULL, (WindowPtr)-1);
     if (dlg == NULL) return;
+    SetDialogPlatinumBackground(dlg);
 
     GetDialogItem(dlg, 2, &type, &itemH, &box);
     SetDialogItem(dlg, 2, type, (Handle)NewUserItemUPP(&AboutDrawProc), &box);

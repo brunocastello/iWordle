@@ -48,13 +48,13 @@ resource 'MENU' (128, "File") {
 /* ---------------------------------------------------------------------- */
 
 resource 'WIND' (128, "iWordle") {
-    { 60, 80, 618, 582 },
+    { 0, 0, 558, 502 },
     documentProc,
     visible,
     goAway,
     0,
     "iWordle",
-    0
+    centerMainScreen
 };
 
 /* ---------------------------------------------------------------------- */
@@ -91,7 +91,7 @@ resource 'DITL' (200) {
 /* ---------------------------------------------------------------------- */
 
 resource 'DLOG' (201, "About iWordle") {
-    { 130, 170, 325, 450 },
+    { 130, 170, 375, 450 },
     movableDBoxProc,
     visible,
     noGoAway,
@@ -103,10 +103,10 @@ resource 'DLOG' (201, "About iWordle") {
 
 resource 'DITL' (201) {
     {
-        { 162, 110, 186, 170 },
+        { 210, 110, 234, 170 },
         Button { enabled, "OK" };
 
-        { 0, 0, 155, 280 },
+        { 0, 0, 200, 280 },
         UserItem { enabled };
     }
 };
