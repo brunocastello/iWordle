@@ -12,7 +12,6 @@
 #include <Menus.h>
 #include <Fonts.h>
 #include <Dialogs.h>
-#include <Controls.h>
 #include <Events.h>
 #include <ToolUtils.h>
 #include <TextUtils.h>
