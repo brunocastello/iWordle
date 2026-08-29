@@ -102,10 +102,7 @@ static Boolean gDone = false;
 
 pascal void MessageContentDrawProc(DialogRef dlg, DialogItemIndex itemNo);
 pascal void AboutContentDrawProc(DialogRef dlg, DialogItemIndex itemNo);
-pascal void ButtonFrameProc(DialogRef dlg, DialogItemIndex itemNo);
-pascal Boolean DismissOnEnterFilterProc(DialogPtr dlg, EventRecord *event, short *itemHit);
 static void PaintFullDialogBackground(DialogRef dlg);
-static void PatchButtonCorners(DialogRef dlg);
 
 static void GetTileRect(short row, short col, Rect *outRect);
 static void GetLetterKeyRect(short row, short idx, Rect *outRect);
@@ -215,61 +212,6 @@ static void DrawBevelRect(const Rect *r, RGBColor fill)
 
     SetForeColor(kColorBorder);
     FrameRect(r);
-}
-
-/* The native Button's own CDEF leaves the 4 corner pixels of its
- * bounding rect white -- outside the rounded shape it actually fills,
- * and apparently hardcoded rather than matched to the port's
- * BackColor -- so against our Platinum gray dialog they show up as
- * stray white dots. Patching them from item 3's own draw proc didn't
- * survive: the Dialog Manager evidently redraws embedded controls via
- * a separate pass that runs after all DITL item drawing regardless of
- * index, so the button's own repaint was overwriting the patch right
- * back to white. Called explicitly as the last step after DrawDialog
- * returns (see DismissOnEnterFilterProc), this runs after that control
- * repaint too and actually sticks. */
-static void PatchButtonCorners(DialogRef dlg)
-{
-    DialogItemType type;
-    Handle itemH;
-    Rect box, corner;
-
-    GetDialogItem(dlg, 2, &type, &itemH, &box);
-
-    SetForeColor(kColorWindowBG);
-    SetRect(&corner, box.left, box.top, box.left + 2, box.top + 2);
-    PaintRect(&corner);
-    SetRect(&corner, box.right - 2, box.top, box.right, box.top + 2);
-    PaintRect(&corner);
-    SetRect(&corner, box.left, box.bottom - 2, box.left + 2, box.bottom);
-    PaintRect(&corner);
-    SetRect(&corner, box.right - 2, box.bottom - 2, box.right, box.bottom);
-    PaintRect(&corner);
-}
-
-/* Classic "this is the default button" emphasis: a bold rounded frame
- * drawn around the real native Button item, inset a few pixels out
- * from its rect. This is the standard Inside Macintosh technique for
- * marking a dialog's default button and is what distinguishes an OK
- * button (bordered) from a Cancel button (plain) in a native alert.
- * Unlike the corner pixels, this frame sits entirely outside the
- * button's own bounding rect, so it isn't at risk of being overwritten
- * by the button's control repaint and can stay a normal item proc. */
-pascal void ButtonFrameProc(DialogRef dlg, DialogItemIndex itemNo)
-{
-    DialogItemType type;
-    Handle itemH;
-    Rect box;
-
-    (void)itemNo;
-
-    GetDialogItem(dlg, 2, &type, &itemH, &box);
-
-    SetForeColor(kColorBlack);
-    InsetRect(&box, -4, -4);
-    PenSize(3, 3);
-    FrameRoundRect(&box, 16, 16);
-    PenNormal();
 }
 
 static void DrawCenteredLetter(const Rect *r, char letter, short fontSize, const RGBColor *color)
@@ -452,48 +394,23 @@ static void BuildLoseMessage(Str255 out)
 /* ---------------------------------------------------------------------- */
 /* Shared modal helpers                                                    */
 /*                                                                        */
-/* Retro68's headers don't expose the Appearance Manager (no             */
+/* Retro68's headers don't expose the Appearance Manager (no              */
 /* Appearance.h at all), so there's no SetThemeWindowBackground to ask     */
-/* for a Platinum background -- we paint it ourselves. Item 1 in both     */
-/* dialogs below is a UserItem that paints the WHOLE dialog window gray   */
-/* (not just its own item rect) and then draws that dialog's text         */
-/* content, so it must be drawn before item 2 (a native Button, for the   */
-/* authentic look) which needs to end up on top, unobscured. Because      */
-/* Return/Enter is hardwired to item 1 by Dialog Manager convention       */
-/* regardless of item type, a filter proc remaps it to item 2 instead.    */
+/* for a Platinum background -- item 1 in both dialogs below is a         */
+/* UserItem that paints the WHOLE dialog window gray (not just its own    */
+/* item rect) and draws that dialog's text content by hand. Item 2 is a   */
+/* real native Button, marked as the dialog's default item via            */
+/* SetDialogDefaultItem() -- letting the Dialog Manager draw its own       */
+/* native default-button emphasis (the bold outline / halo Mac OS 9       */
+/* draws around a dialog's default button) instead of us hand-drawing a   */
+/* frame around it. That hand-drawn frame is what we used to do, and it   */
+/* was fighting the Dialog Manager's own default-item rendering the whole */
+/* time -- no combination of manual corner-patching ever fully worked     */
+/* because we kept re-drawing on top of a native mechanism that redraws   */
+/* itself independently (e.g. to animate). Going fully native here (no    */
+/* custom filter, no manual patch, no extra frame item) is what actually  */
+/* fixes it, and is also just literally what "native button" means.       */
 /* ---------------------------------------------------------------------- */
-
-pascal Boolean DismissOnEnterFilterProc(DialogPtr dlg, EventRecord *event, short *itemHit)
-{
-    (void)itemHit;
-
-    /* Take over update handling entirely so PatchButtonCorners() can
-     * run as a guaranteed-last step after everything else is drawn.
-     * DrawDialog() alone doesn't render embedded controls -- that's a
-     * separate Control Manager pass (DrawControls()), which is also
-     * why the button was appearing blank until a mouseDown/mouseUp
-     * forced Toolbox-triggered control tracking to draw it for the
-     * first time. */
-    if (event->what == updateEvt && (WindowPtr)event->message == (WindowPtr)dlg) {
-        WindowPtr w = (WindowPtr)dlg;
-        BeginUpdate(w);
-        SetPortWindowPort(w);
-        DrawDialog(dlg);
-        DrawControls(w);
-        PatchButtonCorners(dlg);
-        EndUpdate(w);
-        return true;
-    }
-
-    if (event->what == keyDown || event->what == autoKey) {
-        char c = (char)(event->message & charCodeMask);
-        if (c == '\r' || c == 3) {
-            *itemHit = 2;
-            return true;
-        }
-    }
-    return false;
-}
 
 static void PaintFullDialogBackground(DialogRef dlg)
 {
@@ -561,26 +478,10 @@ static void ShowMessage(ConstStr255Param msg)
     GetDialogItem(dlg, 1, &type, &itemH, &box);
     SetDialogItem(dlg, 1, type, (Handle)NewUserItemUPP(&MessageContentDrawProc), &box);
 
-    GetDialogItem(dlg, 3, &type, &itemH, &box);
-    SetDialogItem(dlg, 3, type, (Handle)NewUserItemUPP(&ButtonFrameProc), &box);
-
-    /* Explicitly invalidate the whole window rather than trusting
-     * GetNewDialog's implicit "newly visible" update region (that was
-     * landing inconsistently -- some dialogs showed clean corners on
-     * first paint, others didn't, depending on what else was going on
-     * in the event stream right before the dialog opened). This still
-     * goes through the filter's own updateEvt handling below, which is
-     * the one path we've confirmed reliably draws the button, its
-     * frame, and the corner patch in the right order. */
-    {
-        Rect windowRect;
-        SetPortWindowPort((WindowPtr)dlg);
-        GetPortBounds(GetWindowPort((WindowPtr)dlg), &windowRect);
-        InvalWindowRect((WindowPtr)dlg, &windowRect);
-    }
+    SetDialogDefaultItem(dlg, 2);
 
     do {
-        ModalDialog(NewModalFilterUPP(&DismissOnEnterFilterProc), &item);
+        ModalDialog(NULL, &item);
     } while (item != 2);
 
     DisposeDialog(dlg);
@@ -745,26 +646,10 @@ static void OnAbout(void)
     GetDialogItem(dlg, 1, &type, &itemH, &box);
     SetDialogItem(dlg, 1, type, (Handle)NewUserItemUPP(&AboutContentDrawProc), &box);
 
-    GetDialogItem(dlg, 3, &type, &itemH, &box);
-    SetDialogItem(dlg, 3, type, (Handle)NewUserItemUPP(&ButtonFrameProc), &box);
-
-    /* Explicitly invalidate the whole window rather than trusting
-     * GetNewDialog's implicit "newly visible" update region (that was
-     * landing inconsistently -- some dialogs showed clean corners on
-     * first paint, others didn't, depending on what else was going on
-     * in the event stream right before the dialog opened). This still
-     * goes through the filter's own updateEvt handling below, which is
-     * the one path we've confirmed reliably draws the button, its
-     * frame, and the corner patch in the right order. */
-    {
-        Rect windowRect;
-        SetPortWindowPort((WindowPtr)dlg);
-        GetPortBounds(GetWindowPort((WindowPtr)dlg), &windowRect);
-        InvalWindowRect((WindowPtr)dlg, &windowRect);
-    }
+    SetDialogDefaultItem(dlg, 2);
 
     do {
-        ModalDialog(NewModalFilterUPP(&DismissOnEnterFilterProc), &item);
+        ModalDialog(NULL, &item);
     } while (item != 2);
 
     DisposeDialog(dlg);
