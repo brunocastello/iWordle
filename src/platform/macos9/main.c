@@ -640,7 +640,7 @@ pascal Boolean NameEntryFilterProc(DialogPtr dlg, EventRecord *event, short *ite
         FindControl(local, w, &hitControl);
 
         if (hitControl == gNameFieldControl) {
-            SetKeyboardFocus(w, gNameFieldControl, kControlEditTextPart);
+            SetKeyboardFocus(w, gNameFieldControl, kControlFocusNextPart);
             TrackControl(gNameFieldControl, local, NULL);
             *itemHit = 0;
             return true;
@@ -1000,7 +1000,7 @@ static Boolean PromptForPlayerName(Str255 outName)
             SetControlData(gNameFieldControl, kControlEditTextPart, kControlEditTextTextTag,
                             gLastPlayerName[0], (Ptr)(gLastPlayerName + 1));
         }
-        SetKeyboardFocus((WindowPtr)dlg, gNameFieldControl, kControlEditTextPart);
+        SetKeyboardFocus((WindowPtr)dlg, gNameFieldControl, kControlFocusNextPart);
     }
 
     item = 0;
