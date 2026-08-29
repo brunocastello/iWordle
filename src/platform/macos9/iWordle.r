@@ -144,7 +144,7 @@ resource 'DITL' (202) {
         { 0, 0, 60, 320 },
         UserItem { enabled };
 
-        { 66, 60, 88, 260 },
+        { 67, 60, 85, 260 },
         EditText { enabled, "" };
 
         { 118, 125, 142, 195 },

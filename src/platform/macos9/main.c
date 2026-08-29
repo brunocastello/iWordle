@@ -802,11 +802,21 @@ pascal void NameEntryContentDrawProc(DialogRef dlg, DialogItemIndex itemNo)
 {
     DialogItemType type;
     Handle itemH;
-    Rect box;
+    Rect box, fieldBox;
 
     (void)itemNo;
 
     PaintFullDialogBackground(dlg);
+
+    /* Standard Mac OS 9 EditText fields are always a plain white box:
+     * DrawDialog() only frames an EditText item and draws its text, it
+     * never erases the interior first, so left alone the field would
+     * just show through the gray we painted above. Punch a white patch
+     * here, before DrawDialog() reaches item 2, so the field comes out
+     * looking like a normal text field instead of a gray one. */
+    GetDialogItem(dlg, 2, &type, &itemH, &fieldBox);
+    SetForeColor(kColorWhite);
+    PaintRect(&fieldBox);
 
     GetDialogItem(dlg, 1, &type, &itemH, &box);
     SetForeColor(kColorBlack);
