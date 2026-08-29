@@ -123,11 +123,14 @@ resource 'DITL' (201) {
 
 /* ---- Player name entry (DLOG 202 + DITL 202) ----
    Shown after every win/loss to attribute the result to a player. Item 1
-   is the usual background+label UserItem; item 2 is a real native
-   EditText field (Dialog Manager wires up its focus/typing/caret
-   automatically -- SelectDialogItemText just needs to be called once
-   after the dialog opens); item 3 is the OK button; item 4 is the
-   ButtonFrameProc ring around it, same as every other dialog here. */
+   is the usual background+label UserItem; item 2 is a plain UserItem
+   that only reserves layout space -- the actual field is a real Control
+   Manager Edit Text control (kControlEditTextProc, procID 190) created
+   at runtime in PromptForPlayerName (main.c), since that's what actually
+   renders with the Appearance Manager's themed look (sunken box, blue
+   focus ring) instead of a classic DITL editText item's flat frame.
+   Item 3 is the OK button; item 4 is the ButtonFrameProc ring around it,
+   same as every other dialog here. */
 resource 'DLOG' (202, "Who's Playing?") {
     { 0, 0, 160, 320 },
     dBoxProc,
@@ -145,7 +148,7 @@ resource 'DITL' (202) {
         UserItem { enabled };
 
         { 67, 60, 85, 260 },
-        EditText { enabled, "" };
+        UserItem { enabled };
 
         { 118, 125, 142, 195 },
         Button { enabled, "OK" };
