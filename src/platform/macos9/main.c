@@ -103,6 +103,7 @@ static Boolean gDone = false;
 pascal void MessageContentDrawProc(DialogRef dlg, DialogItemIndex itemNo);
 pascal void AboutContentDrawProc(DialogRef dlg, DialogItemIndex itemNo);
 pascal Boolean DismissOnEnterFilterProc(DialogPtr dlg, EventRecord *event, short *itemHit);
+pascal void ButtonFrameProc(DialogRef dlg, DialogItemIndex itemNo);
 static void PaintFullDialogBackground(DialogRef dlg);
 
 static void GetTileRect(short row, short col, Rect *outRect);
@@ -400,20 +401,19 @@ static void BuildLoseMessage(Str255 out)
 /* for a Platinum background -- item 1 in both dialogs below is a         */
 /* UserItem that paints the WHOLE dialog window gray (not just its own    */
 /* item rect) and draws that dialog's text content by hand. Item 2 is a   */
-/* plain native Button, completely untouched by our own drawing code.     */
-/*                                                                        */
-/* We tried marking it as the dialog's default item via                   */
-/* SetDialogDefaultItem() to get the native bold-outline emphasis for     */
-/* free, and before that a hand-drawn frame around it in a third item --  */
-/* both made the button render *worse* against our custom background      */
-/* (missing frame, stray white pixels, or the control barely rendering    */
-/* at all) than just leaving it as a plain, undecorated native Button.    */
-/* This toolchain's Control Manager/Appearance-adjacent theming has real  */
-/* gaps for a native control on a non-default dialog background, so a     */
-/* plain Button is the most reliable native rendering available here.     */
-/* Because Return/Enter is hardwired to item 1 by Dialog Manager          */
-/* convention regardless of item type (with no default item marked),      */
-/* this filter proc remaps it to item 2 -- no drawing, just the remap.    */
+/* real native Button, "OK". Item 3 draws the classic bold rounded frame  */
+/* around it that marks it as the dialog's default button -- the same     */
+/* technique that distinguishes an OK button from a plain Cancel button   */
+/* in a native alert. SetDialogDefaultItem() was tried as a way to get     */
+/* that emphasis for free from the Dialog Manager instead of hand-drawing */
+/* it, but rendered far worse (the button barely appeared at all) than    */
+/* this hand-drawn frame does, so this is the version we're keeping.      */
+/* There's a known remaining cosmetic issue where the button's own        */
+/* corner pixels can show white against our gray background; the frame    */
+/* itself, which is what's actually being asked for, is unaffected by     */
+/* that and renders correctly. Because Return/Enter is hardwired to item  */
+/* 1 by Dialog Manager convention regardless of item type, this filter     */
+/* proc remaps it to item 2 instead.                                      */
 /* ---------------------------------------------------------------------- */
 
 pascal Boolean DismissOnEnterFilterProc(DialogPtr dlg, EventRecord *event, short *itemHit)
@@ -428,6 +428,23 @@ pascal Boolean DismissOnEnterFilterProc(DialogPtr dlg, EventRecord *event, short
         }
     }
     return false;
+}
+
+pascal void ButtonFrameProc(DialogRef dlg, DialogItemIndex itemNo)
+{
+    DialogItemType type;
+    Handle itemH;
+    Rect box;
+
+    (void)itemNo;
+
+    GetDialogItem(dlg, 2, &type, &itemH, &box);
+
+    SetForeColor(kColorBlack);
+    InsetRect(&box, -4, -4);
+    PenSize(3, 3);
+    FrameRoundRect(&box, 16, 16);
+    PenNormal();
 }
 
 static void PaintFullDialogBackground(DialogRef dlg)
@@ -495,6 +512,9 @@ static void ShowMessage(ConstStr255Param msg)
 
     GetDialogItem(dlg, 1, &type, &itemH, &box);
     SetDialogItem(dlg, 1, type, (Handle)NewUserItemUPP(&MessageContentDrawProc), &box);
+
+    GetDialogItem(dlg, 3, &type, &itemH, &box);
+    SetDialogItem(dlg, 3, type, (Handle)NewUserItemUPP(&ButtonFrameProc), &box);
 
     do {
         ModalDialog(NewModalFilterUPP(&DismissOnEnterFilterProc), &item);
@@ -661,6 +681,9 @@ static void OnAbout(void)
 
     GetDialogItem(dlg, 1, &type, &itemH, &box);
     SetDialogItem(dlg, 1, type, (Handle)NewUserItemUPP(&AboutContentDrawProc), &box);
+
+    GetDialogItem(dlg, 3, &type, &itemH, &box);
+    SetDialogItem(dlg, 3, type, (Handle)NewUserItemUPP(&ButtonFrameProc), &box);
 
     do {
         ModalDialog(NewModalFilterUPP(&DismissOnEnterFilterProc), &item);

@@ -3,18 +3,17 @@
  * message dialog (New Game confirm, Give Up, Win / Lose), and an About
  * dialog.
  *
- * Both are DLOG/DITL dialogs with two items: item 1 is a UserItem that
- * paints the Platinum gray background (Retro68's headers don't expose
- * the Appearance Manager, so there's no SetThemeWindowBackground to ask
- * for it) and draws the dialog's text content by hand; item 2 is a
- * real native Button, "OK", marked as the dialog's default item in
- * code via SetDialogDefaultItem() so the Dialog Manager draws its own
- * native default-button emphasis. An earlier version hand-drew a bold
- * frame around the button in a third item to fake that emphasis, which
- * fought the Dialog Manager's own default-item rendering (it redraws
- * itself independently, e.g. to animate) and could never be made to
- * render cleanly -- going fully native instead is both simpler and is
- * literally what "native button" means.
+ * Both are DLOG/DITL dialogs with three items: item 1 is a UserItem
+ * that paints the Platinum gray background (Retro68's headers don't
+ * expose the Appearance Manager, so there's no SetThemeWindowBackground
+ * to ask for it) and draws the dialog's text content by hand; item 2 is
+ * a real native Button, "OK"; item 3 draws the classic bold rounded
+ * frame around item 2 that marks it as the dialog's default button --
+ * the standard technique that distinguishes an OK button from a plain
+ * Cancel button in a native alert. SetDialogDefaultItem() was tried as
+ * a way to get that emphasis for free from the Dialog Manager instead,
+ * but rendered far worse (the button barely appeared at all) than this
+ * hand-drawn frame does, so this is the version we're keeping.
  */
 
 #include "Types.r"
@@ -88,6 +87,9 @@ resource 'DITL' (200) {
 
         { 98, 135, 122, 205 },
         Button { enabled, "OK" };
+
+        { 93, 130, 127, 210 },
+        UserItem { enabled };
     }
 };
 
@@ -109,6 +111,9 @@ resource 'DITL' (201) {
 
         { 242, 105, 266, 175 },
         Button { enabled, "OK" };
+
+        { 237, 100, 271, 180 },
+        UserItem { enabled };
     }
 };
 
