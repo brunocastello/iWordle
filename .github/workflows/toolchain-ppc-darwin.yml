@@ -1,0 +1,52 @@
+name: Build PPC/Darwin toolchain image
+
+on:
+  push:
+    paths:
+      - '.github/docker/ppc-darwin-toolchain/Dockerfile'
+      - '.github/workflows/toolchain-ppc-darwin.yml'
+      - 'third_party/MacOSX10.4u.sdk/**'
+  workflow_dispatch:
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}/ppc-darwin-toolchain
+  TARGET: powerpc-apple-darwin8
+  MAC_SDK_VERSION: MacOSX10.4u
+  MACOSX_PPC_DEPLOYMENT_TARGET: "10.4"
+
+jobs:
+  docker-build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Log in to the Container registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata (tags, labels) for Docker
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          file: '.github/docker/ppc-darwin-toolchain/Dockerfile'
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            TARGET=${{ env.TARGET }}
+            MAC_SDK_VERSION=${{ env.MAC_SDK_VERSION }}
+            MACOSX_PPC_DEPLOYMENT_TARGET=${{ env.MACOSX_PPC_DEPLOYMENT_TARGET }}

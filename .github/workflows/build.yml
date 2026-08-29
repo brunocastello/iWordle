@@ -2,7 +2,19 @@ name: Build (Mac OS 9 PowerPC / Carbon)
 
 on:
   push:
+    paths:
+      - 'src/core/**'
+      - 'src/platform/macos9/**'
+      - 'CMakeLists.txt'
+      - 'third_party/InterfacesAndLibraries/**'
+      - '.github/workflows/build.yml'
   pull_request:
+    paths:
+      - 'src/core/**'
+      - 'src/platform/macos9/**'
+      - 'CMakeLists.txt'
+      - 'third_party/InterfacesAndLibraries/**'
+      - '.github/workflows/build.yml'
   workflow_dispatch:
 
 jobs:
