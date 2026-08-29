@@ -63,8 +63,8 @@ resource 'MENU' (128, "File") {
     "File",
     {
         "New Game", noIcon, "N", noMark, plain;
-        "Give Up", noIcon, noKey, noMark, plain;
-        "Statistics...", noIcon, noKey, noMark, plain;
+        "End Game", noIcon, noKey, noMark, plain;
+        "Ranking...", noIcon, noKey, noMark, plain;
         "-", noIcon, noKey, noMark, plain;
         "Quit", noIcon, "Q", noMark, plain;
     }
@@ -164,7 +164,7 @@ resource 'WIND' (202, "Who's Playing?") {
    same technique the message/about dialogs use to draw their text. Item
    2 is a plain "Clear" button (no ring -- it's not the default action).
    Item 3 is "OK" (dismiss), item 4 its ButtonFrameProc ring. */
-resource 'DLOG' (203, "Statistics") {
+resource 'DLOG' (203, "Ranking") {
     { 0, 0, 300, 420 },
     dBoxProc,
     visible,
