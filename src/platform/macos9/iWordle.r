@@ -1,25 +1,26 @@
 /*
  * Resource definitions for iWordle: menu bar, main document window, a
- * small custom-drawn message window (New Game confirm, Give Up, Win /
- * Lose), and a custom-drawn About window.
+ * message dialog (New Game confirm, Give Up, Win / Lose), and an About
+ * dialog.
  *
- * The message and About windows are plain WIND resources, not Dialog
- * Manager DLOG/DITL dialogs: we draw their entire content (background,
- * text, and the OK button) ourselves and run our own small event loop
- * for them, exactly like the main game window already does. This
- * matches how classic Mac apps commonly built this kind of window --
- * confirmed by inspecting a real one (OS9Map's About window is a plain
- * WIND, procID dBoxProc, no DLOG/DITL/CNTL at all) -- and sidesteps a
- * string of Dialog Manager/Appearance Manager quirks we hit trying to
- * theme and lay out DLOG-based dialogs (backgrounds not repainting,
- * overlapping DITL items swallowing clicks, StaticText not rendering
- * once a background UserItem was added, native controls erasing their
- * corners against the wrong background color).
+ * Both are real DLOG/DITL dialogs with a native Button item (for the
+ * authentic Platinum push-button look, via GetNewDialog/ModalDialog),
+ * plus one UserItem for hand-drawn text content (message text, or the
+ * About box's icon/name/credits). The Button item is item 1, so
+ * Return/Enter triggers it via the Dialog Manager's normal default-
+ * item handling with no custom filter needed. The UserItem's rect
+ * never overlaps the button's, so DITL hit-testing (which matches
+ * items in index order) can't resolve a button click to the wrong
+ * item. The Platinum gray dialog background comes from
+ * SetThemeWindowBackground() (Appearance Manager) rather than manual
+ * painting, since manually painting it was what broke native
+ * StaticText rendering in an earlier iteration.
  */
 
 #include "Types.r"
 #include "Windows.r"
 #include "Menus.r"
+#include "Dialogs.r"
 #include "Processes.r"
 
 /* ---------------------------------------------------------------------- */
@@ -69,24 +70,46 @@ resource 'WIND' (128, "iWordle") {
     centerMainScreen
 };
 
-resource 'WIND' (200, "Message") {
+resource 'DLOG' (200, "Message") {
     { 0, 0, 140, 340 },
     dBoxProc,
     invisible,
     noGoAway,
     0,
+    200,
     "",
     centerMainScreen
 };
 
-resource 'WIND' (201, "About iWordle") {
+resource 'DITL' (200) {
+    {
+        { 98, 135, 122, 205 },
+        Button { enabled, "OK" };
+
+        { 0, 0, 76, 340 },
+        UserItem { enabled };
+    }
+};
+
+resource 'DLOG' (201, "About iWordle") {
     { 0, 0, 236, 280 },
     dBoxProc,
     invisible,
     noGoAway,
     0,
+    201,
     "",
     centerMainScreen
+};
+
+resource 'DITL' (201) {
+    {
+        { 204, 105, 228, 175 },
+        Button { enabled, "OK" };
+
+        { 0, 0, 200, 280 },
+        UserItem { enabled };
+    }
 };
 
 /* ---------------------------------------------------------------------- */
