@@ -576,7 +576,7 @@ static void ShowMessage(ConstStr255Param msg)
         Rect windowRect;
         SetPortWindowPort((WindowPtr)dlg);
         GetPortBounds(GetWindowPort((WindowPtr)dlg), &windowRect);
-        InvalRect(&windowRect);
+        InvalWindowRect((WindowPtr)dlg, &windowRect);
     }
 
     do {
@@ -760,7 +760,7 @@ static void OnAbout(void)
         Rect windowRect;
         SetPortWindowPort((WindowPtr)dlg);
         GetPortBounds(GetWindowPort((WindowPtr)dlg), &windowRect);
-        InvalRect(&windowRect);
+        InvalWindowRect((WindowPtr)dlg, &windowRect);
     }
 
     do {
