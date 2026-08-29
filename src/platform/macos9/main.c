@@ -560,6 +560,15 @@ static void ShowMessage(ConstStr255Param msg)
     GetDialogItem(dlg, 3, &type, &itemH, &box);
     SetDialogItem(dlg, 3, type, (Handle)NewUserItemUPP(&ButtonFrameProc), &box);
 
+    /* Force one fully-patched draw up front, rather than relying on
+     * whichever update event happens to be first through the filter:
+     * that was landing inconsistently (some dialogs showed clean
+     * corners, others didn't) depending on what else was going on in
+     * the event stream right before the dialog opened. */
+    SetPortWindowPort((WindowPtr)dlg);
+    DrawDialog(dlg);
+    PatchButtonCorners(dlg);
+
     do {
         ModalDialog(NewModalFilterUPP(&DismissOnEnterFilterProc), &item);
     } while (item != 2);
@@ -728,6 +737,15 @@ static void OnAbout(void)
 
     GetDialogItem(dlg, 3, &type, &itemH, &box);
     SetDialogItem(dlg, 3, type, (Handle)NewUserItemUPP(&ButtonFrameProc), &box);
+
+    /* Force one fully-patched draw up front, rather than relying on
+     * whichever update event happens to be first through the filter:
+     * that was landing inconsistently (some dialogs showed clean
+     * corners, others didn't) depending on what else was going on in
+     * the event stream right before the dialog opened. */
+    SetPortWindowPort((WindowPtr)dlg);
+    DrawDialog(dlg);
+    PatchButtonCorners(dlg);
 
     do {
         ModalDialog(NewModalFilterUPP(&DismissOnEnterFilterProc), &item);
