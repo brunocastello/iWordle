@@ -19,6 +19,7 @@
 #include <Icons.h>
 #include <AppleEvents.h>
 #include <Files.h>
+#include <Processes.h>
 
 #include <string.h>
 #include <ctype.h>
@@ -420,22 +421,25 @@ static void BuildLoseMessage(Str255 out)
 /* ---------------------------------------------------------------------- */
 /* Statistics persistence                                                  */
 /*                                                                        */
-/* Stored as a flat dump of WordleStatsBook in System Folder:Application  */
-/* Support:iWordle: -- the same place (and same per-app subfolder shape)  */
-/* a future Mac OS X port would use under ~/Library/Application Support,  */
-/* so the on-disk convention doesn't have to change when this is ported.  */
+/* Stored as a flat dump of WordleStatsBook in an "Application             */
+/* Support:iWordle:" folder next to the application, mirroring the shape  */
+/* a future Mac OS X port would use under ~/Library/Application Support   */
+/* -- but anchored at the app's own folder rather than the real System    */
+/* Folder, because that turned out not to be reachable here (see below).  */
 /*                                                                        */
-/* This toolchain's headers have no Folder Manager at all (no FindFolder, */
-/* no folder-type constants -- confirmed by there being no Folders.yaml   */
-/* in autc04/multiversal's header generator, the same reason Controls.h   */
-/* and Appearance.h don't exist as files either), so the System Folder is */
-/* found the pre-Folder-Manager way instead: SysEnvirons()'s sysVRefNum   */
-/* is a working-directory refnum for the System Folder, which GetWDInfo   */
-/* resolves to a real (vRefNum, dirID) pair. From there, each subfolder   */
-/* is looked up by name via PBGetCatInfoSync and created with             */
-/* FSpDirCreate if it isn't there yet -- the other convenience calls this */
-/* would normally use (DirCreate, FSpGetDirectoryID) don't exist in this  */
-/* header set either, only their lower-level FSSpec/PB equivalents.       */
+/* Two things were tried and ruled out with real linker evidence, not     */
+/* guesses: (1) the Folder Manager (FindFolder) doesn't exist anywhere in */
+/* this toolchain -- no Folders.yaml in autc04/multiversal's own header   */
+/* generator, same reason Controls.h/Appearance.h don't exist as files.   */
+/* (2) the classic pre-Folder-Manager fallback (SysEnvirons's sysVRefNum  */
+/* + GetWDInfo, which DOES have yaml entries and DOES compile) still      */
+/* fails at link time under "-carbon": `undefined reference to            */
+/* .SysEnvirons/.GetWDInfo`. That matches real Apple Carbon, which        */
+/* dropped exactly these old raw-trap calls -- so under this toolchain's  */
+/* Carbon link mode there is currently no working way to locate the       */
+/* System Folder at all. The app's own folder, found via                 */
+/* GetProcessInformation's processAppSpec, is the one location-finding    */
+/* mechanism confirmed to link successfully under Carbon here.            */
 /* ---------------------------------------------------------------------- */
 
 static OSErr ResolveOrCreateSubfolder(short vRefNum, long parentDirID,
@@ -463,29 +467,29 @@ static OSErr ResolveOrCreateSubfolder(short vRefNum, long parentDirID,
 
 static OSErr GetStatsFolder(short *outVRefNum, long *outDirID)
 {
-    SysEnvRec env;
-    short vRefNum;
-    long sysDirID;
-    long procID;
+    ProcessSerialNumber psn;
+    ProcessInfoRec info;
+    FSSpec appSpec;
     long appSupportDirID;
     Str255 name;
     OSErr err;
 
-    err = SysEnvirons(curSysEnvVers, &env);
-    if (err != noErr) return err;
-
-    err = GetWDInfo(env.sysVRefNum, &vRefNum, &sysDirID, &procID);
+    GetCurrentProcess(&psn);
+    memset(&info, 0, sizeof(info));
+    info.processInfoLength = sizeof(info);
+    info.processAppSpec = &appSpec;
+    err = GetProcessInformation(&psn, &info);
     if (err != noErr) return err;
 
     CStrToPStr(name, "Application Support");
-    err = ResolveOrCreateSubfolder(vRefNum, sysDirID, name, &appSupportDirID);
+    err = ResolveOrCreateSubfolder(appSpec.vRefNum, appSpec.parID, name, &appSupportDirID);
     if (err != noErr) return err;
 
     CStrToPStr(name, "iWordle");
-    err = ResolveOrCreateSubfolder(vRefNum, appSupportDirID, name, outDirID);
+    err = ResolveOrCreateSubfolder(appSpec.vRefNum, appSupportDirID, name, outDirID);
     if (err != noErr) return err;
 
-    *outVRefNum = vRefNum;
+    *outVRefNum = appSpec.vRefNum;
     return noErr;
 }
 
