@@ -19,6 +19,7 @@
 #include <Icons.h>
 #include <AppleEvents.h>
 #include <Files.h>
+#include <Processes.h>
 
 #include <string.h>
 #include <ctype.h>
@@ -112,6 +113,7 @@ pascal Boolean DismissOnEnterFilterProc(DialogPtr dlg, EventRecord *event, short
 pascal Boolean DismissOnEnterFilterProc3(DialogPtr dlg, EventRecord *event, short *itemHit);
 pascal void ButtonFrameProc(DialogRef dlg, DialogItemIndex itemNo);
 static void PaintFullDialogBackground(DialogRef dlg);
+static void PaintDialogBackgroundExcluding(DialogRef dlg, const Rect *holeRect);
 
 static void PStrToCStr(char *dst, ConstStr255Param src, size_t dstSize);
 static void GetStatsFileSpec(FSSpec *spec);
@@ -419,18 +421,31 @@ static void BuildLoseMessage(Str255 out)
 /* ---------------------------------------------------------------------- */
 /* Statistics persistence                                                  */
 /*                                                                        */
-/* Stored as a flat dump of WordleStatsBook next to the application --    */
-/* vRefNum 0 / dirID 0 in FSMakeFSSpec means "the default volume/         */
-/* directory", which for a double-clicked app is its own folder. This    */
-/* avoids needing the Folders Manager (FindFolder) for a Preferences     */
-/* folder path, keeping this to plain File Manager calls only.           */
+/* Stored as a flat dump of WordleStatsBook next to the application. The  */
+/* app's own folder is found via GetProcessInformation's processAppSpec  */
+/* (the Process Manager's own record of where the running application    */
+/* file lives) rather than assuming vRefNum/dirID 0 means "here" -- that  */
+/* default-directory guess isn't guaranteed to land on the app's folder  */
+/* for every launch path (Finder alias, AppleScript, etc.), while the    */
+/* app's own FSSpec always is. This still avoids needing the Folders     */
+/* Manager (FindFolder) for a Preferences folder path.                    */
 /* ---------------------------------------------------------------------- */
 
 static void GetStatsFileSpec(FSSpec *spec)
 {
+    ProcessSerialNumber psn;
+    ProcessInfoRec info;
+    FSSpec appSpec;
     Str255 name;
+
+    GetCurrentProcess(&psn);
+    memset(&info, 0, sizeof(info));
+    info.processInfoLength = sizeof(info);
+    info.processAppSpec = &appSpec;
+    GetProcessInformation(&psn, &info);
+
     CStrToPStr(name, "iWordle Stats");
-    FSMakeFSSpec(0, 0, name, spec);
+    FSMakeFSSpec(appSpec.vRefNum, appSpec.parID, name, spec);
 }
 
 static void LoadStats(void)
@@ -550,6 +565,33 @@ static void PaintFullDialogBackground(DialogRef dlg)
     SetBackColor(kColorWindowBG);
     SetForeColor(kColorWindowBG);
     PaintRect(&windowRect);
+}
+
+/* Same gray fill as PaintFullDialogBackground, but leaves holeRect
+ * completely untouched -- used to keep a native EditText item's own
+ * default white background intact instead of painting over it and then
+ * patching a white rect back in, which is still hand-drawing the field
+ * even if it looks the same. DrawDialog() never erases an EditText
+ * item's interior itself, so whatever we leave under it here is what
+ * the field ends up looking like. */
+static void PaintDialogBackgroundExcluding(DialogRef dlg, const Rect *holeRect)
+{
+    Rect windowRect;
+    RgnHandle bgRgn;
+    RgnHandle holeRgn;
+
+    GetPortBounds(GetWindowPort((WindowPtr)dlg), &windowRect);
+    SetBackColor(kColorWindowBG);
+    SetForeColor(kColorWindowBG);
+
+    bgRgn = NewRgn();
+    holeRgn = NewRgn();
+    RectRgn(bgRgn, &windowRect);
+    RectRgn(holeRgn, holeRect);
+    DiffRgn(bgRgn, holeRgn, bgRgn);
+    PaintRgn(bgRgn);
+    DisposeRgn(holeRgn);
+    DisposeRgn(bgRgn);
 }
 
 /* ---------------------------------------------------------------------- */
@@ -806,17 +848,11 @@ pascal void NameEntryContentDrawProc(DialogRef dlg, DialogItemIndex itemNo)
 
     (void)itemNo;
 
-    PaintFullDialogBackground(dlg);
-
-    /* Standard Mac OS 9 EditText fields are always a plain white box:
-     * DrawDialog() only frames an EditText item and draws its text, it
-     * never erases the interior first, so left alone the field would
-     * just show through the gray we painted above. Punch a white patch
-     * here, before DrawDialog() reaches item 2, so the field comes out
-     * looking like a normal text field instead of a gray one. */
+    /* Leave item 2's rect out of the gray fill entirely so the native
+     * EditText field keeps its own default white background -- see
+     * PaintDialogBackgroundExcluding. */
     GetDialogItem(dlg, 2, &type, &itemH, &fieldBox);
-    SetForeColor(kColorWhite);
-    PaintRect(&fieldBox);
+    PaintDialogBackgroundExcluding(dlg, &fieldBox);
 
     GetDialogItem(dlg, 1, &type, &itemH, &box);
     SetForeColor(kColorBlack);
