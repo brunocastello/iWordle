@@ -11,7 +11,6 @@
 #include <Windows.h>
 #include <Menus.h>
 #include <Fonts.h>
-#include <Dialogs.h>
 #include <Events.h>
 #include <ToolUtils.h>
 #include <TextUtils.h>
@@ -23,10 +22,6 @@
 #include <ctype.h>
 
 #include "wordle_engine.h"
-
-#ifndef TARGET_API_MAC_CARBON
-#define NewUserItemUPP NewUserItemProc
-#endif
 
 /* Not declared by Retro68's headers; 3 is Geneva's well-known classic
  * system font ID (systemFont=0, applFont=1, newYork=2, geneva=3, ...). */
@@ -100,10 +95,9 @@ static Boolean gDone = false;
 /* Forward declarations                                                   */
 /* ---------------------------------------------------------------------- */
 
-pascal void AboutDrawProc(DialogRef dlg, DialogItemIndex itemNo);
-pascal void MessageBackgroundProc(DialogRef dlg, DialogItemIndex itemNo);
-pascal Boolean DismissOnEnterFilterProc(DialogPtr dlg, EventRecord *event, short *itemHit);
-static void PaintDialogBackground(DialogRef dlg, DialogItemIndex bgItem);
+typedef void (*ModalDrawProc)(WindowPtr w);
+typedef Boolean (*ModalOKHitProc)(Point local);
+static void RunSimpleModalWindow(WindowPtr w, ModalDrawProc drawFn, ModalOKHitProc okHitFn);
 
 static void GetTileRect(short row, short col, Rect *outRect);
 static void GetLetterKeyRect(short row, short idx, Rect *outRect);
@@ -111,6 +105,7 @@ static void GetBackspaceKeyRect(Rect *outRect);
 
 static void DrawBevelRect(const Rect *r, RGBColor fill);
 static void DrawCenteredLetter(const Rect *r, char letter, short fontSize, const RGBColor *color);
+static void DrawCenteredStringAt(short centerX, short baselineY, ConstStr255Param s);
 static void DrawTile(short row, short col);
 static void DrawKey(const Rect *r, char letter);
 static void DrawBoard(void);
@@ -187,33 +182,6 @@ static void SetForeColor(RGBColor color)
     RGBForeColor(&color);
 }
 
-static void SetBackColor(RGBColor color)
-{
-    RGBBackColor(&color);
-}
-
-/* Carbon's Appearance Manager doesn't repaint the whole classic dialog
- * to our Platinum gray on its own, so we paint it ourselves every
- * redraw. bgItem must be a UserItem drawn before any item that should
- * appear on top of it (item 1), and its rect must NOT overlap any
- * other item: DITL hit-testing matches items in index order, so an
- * overlapping background item would swallow clicks meant for whatever
- * sits underneath it. We also set BackColor (not just PaintRect with
- * ForeColor), since native controls like the OK button erase their own
- * rounded corners using the port's BackColor -- leaving it at the
- * default white is what caused white corner pixels around the button. */
-static void PaintDialogBackground(DialogRef dlg, DialogItemIndex bgItem)
-{
-    DialogItemType type;
-    Handle itemH;
-    Rect box;
-
-    GetDialogItem(dlg, bgItem, &type, &itemH, &box);
-    SetBackColor(kColorWindowBG);
-    SetForeColor(kColorWindowBG);
-    PaintRect(&box);
-}
-
 static void DrawBevelRect(const Rect *r, RGBColor fill)
 {
     Rect inner = *r;
@@ -254,6 +222,16 @@ static void DrawCenteredLetter(const Rect *r, char letter, short fontSize, const
     w = StringWidth(s);
     MoveTo(r->left + ((r->right - r->left) - w) / 2,
            r->top + (r->bottom - r->top) / 2 + fontSize / 3);
+    DrawString(s);
+}
+
+/* Draws s horizontally centered on centerX with its baseline at
+ * baselineY; caller sets font/size/face/color beforehand. Used for the
+ * message and About windows' hand-drawn text and OK buttons. */
+static void DrawCenteredStringAt(short centerX, short baselineY, ConstStr255Param s)
+{
+    short w = StringWidth(s);
+    MoveTo(centerX - w / 2, baselineY);
     DrawString(s);
 }
 
@@ -404,87 +382,159 @@ static void BuildLoseMessage(Str255 out)
 }
 
 /* ---------------------------------------------------------------------- */
-/* Shared modal helpers                                                    */
+/* Simple modal windows                                                    */
 /*                                                                        */
-/* Item 1 in both dialogs is a background-painting UserItem (so it must   */
-/* draw first); item 2 is always the OK button. Pressing Return normally  */
-/* only triggers item 1 by Dialog Manager convention, so a filter proc    */
-/* remaps it to item 2 instead of relying on raw item ordering.           */
+/* The message box and About box are plain WIND resources, not Dialog     */
+/* Manager DLOG/DITL dialogs: we draw their entire content (background,   */
+/* text, and the OK button) ourselves and run our own small event loop,   */
+/* exactly like the main game window already does. This matches how a    */
+/* real classic app builds this kind of window (confirmed by inspecting  */
+/* OS9Map's About window: a plain WIND, no DLOG/DITL/CNTL at all), and    */
+/* it sidesteps a string of Dialog/Appearance Manager quirks we hit       */
+/* trying to theme DLOG-based dialogs instead (backgrounds not            */
+/* repainting, overlapping DITL items swallowing clicks, StaticText not   */
+/* rendering once a background UserItem was added, native controls        */
+/* erasing their corners against the wrong background color).             */
 /* ---------------------------------------------------------------------- */
 
-pascal Boolean DismissOnEnterFilterProc(DialogPtr dlg, EventRecord *event, short *itemHit)
+static void RunSimpleModalWindow(WindowPtr w, ModalDrawProc drawFn, ModalOKHitProc okHitFn)
 {
-    (void)dlg;
+    EventRecord event;
+    Boolean done = false;
 
-    if (event->what == keyDown || event->what == autoKey) {
-        char c = (char)(event->message & charCodeMask);
-        if (c == '\r' || c == 3) {
-            *itemHit = 2;
-            return true;
+    SetPortWindowPort(w);
+    drawFn(w);
+    ShowWindow(w);
+    SelectWindow(w);
+
+    while (!done) {
+        if (WaitNextEvent(everyEvent, &event, 15, NULL)) {
+            switch (event.what) {
+                case updateEvt:
+                    if ((WindowPtr)event.message == w) {
+                        BeginUpdate(w);
+                        SetPortWindowPort(w);
+                        drawFn(w);
+                        EndUpdate(w);
+                    } else if ((WindowPtr)event.message == gWindow) {
+                        HandleUpdate(&event);
+                    }
+                    break;
+
+                case mouseDown: {
+                    WindowPtr which;
+                    short part = FindWindow(event.where, &which);
+                    if (which == w && part == inContent) {
+                        Point local = event.where;
+                        SetPortWindowPort(w);
+                        GlobalToLocal(&local);
+                        if (okHitFn(local)) done = true;
+                    }
+                    /* Clicks outside this window are swallowed (modal). */
+                    break;
+                }
+
+                case keyDown:
+                case autoKey: {
+                    char c = (char)(event.message & charCodeMask);
+                    if (c == '\r' || c == 3 || c == 0x1B) done = true;
+                    break;
+                }
+
+                default:
+                    break;
+            }
         }
     }
-    return false;
+
+    DisposeWindow(w);
 }
 
 /* ---------------------------------------------------------------------- */
-/* Message dialog                                                          */
+/* Message window (New Game / Give Up / Win / Lose)                       */
 /* ---------------------------------------------------------------------- */
 
-pascal void MessageBackgroundProc(DialogRef dlg, DialogItemIndex itemNo)
+/* Set by ShowMessage() just before the modal loop; read by
+ * DrawMessageContent(). */
+static Str255 gMessageText;
+
+static void GetMessageOKButtonRect(Rect *r)
 {
-    (void)itemNo;
-    PaintDialogBackground(dlg, 1);
+    SetRect(r, 135, 98, 205, 122);
+}
+
+static void DrawMessageContent(WindowPtr w)
+{
+    Rect full, okRect;
+    Str255 ok;
+
+    GetPortBounds(GetWindowPort(w), &full);
+
+    SetForeColor(kColorWindowBG);
+    PaintRect(&full);
+    SetForeColor(kColorBlack);
+    PenNormal();
+
+    TextFont(kFontGeneva);
+    TextFace(normal);
+    TextSize(11);
+    DrawCenteredStringAt((full.left + full.right) / 2, 55, gMessageText);
+
+    GetMessageOKButtonRect(&okRect);
+    DrawBevelRect(&okRect, kColorKeyFace);
+    SetForeColor(kColorBorder);
+    TextSize(12);
+    TextFace(bold);
+    CStrToPStr(ok, "OK");
+    DrawCenteredStringAt((okRect.left + okRect.right) / 2,
+                          okRect.top + (okRect.bottom - okRect.top) / 2 + 4, ok);
+    SetForeColor(kColorBlack);
+}
+
+static Boolean MessageOKHit(Point local)
+{
+    Rect r;
+    GetMessageOKButtonRect(&r);
+    return PtInRect(local, &r);
 }
 
 static void ShowMessage(ConstStr255Param msg)
 {
-    DialogPtr dlg;
-    short item;
-    DialogItemType type;
-    Handle itemH;
-    Rect box;
+    WindowPtr w;
 
-    ParamText(msg, "\p", "\p", "\p");
+    PStrCopy(gMessageText, msg);
 
-    dlg = GetNewDialog(200, NULL, (WindowPtr)-1);
-    if (dlg == NULL) return;
+    w = GetNewCWindow(200, NULL, (WindowPtr)-1);
+    if (w == NULL) return;
 
-    GetDialogItem(dlg, 1, &type, &itemH, &box);
-    SetDialogItem(dlg, 1, type, (Handle)NewUserItemUPP(&MessageBackgroundProc), &box);
-
-    do {
-        ModalDialog(NewModalFilterUPP(&DismissOnEnterFilterProc), &item);
-    } while (item != 2);
-
-    DisposeDialog(dlg);
+    RunSimpleModalWindow(w, DrawMessageContent, MessageOKHit);
     RedrawAll();
 }
 
 /* ---------------------------------------------------------------------- */
-/* About box: custom-drawn content (icon, app name/version, author,       */
-/* credits) in a native movable modal window with a plain OK button.      */
+/* About window: icon, app name/version, author, credits, OK button       */
 /* ---------------------------------------------------------------------- */
 
-pascal void AboutDrawProc(DialogRef dlg, DialogItemIndex itemNo)
+static void GetAboutOKButtonRect(Rect *r)
 {
-    DialogItemType type;
-    Handle itemH;
-    Rect box, iconRect;
+    SetRect(r, 105, 204, 175, 228);
+}
+
+static void DrawAboutContent(WindowPtr w)
+{
+    Rect full, iconRect, okRect;
     Str255 s;
-    short w, midX;
+    short midX;
 
-    (void)itemNo;
+    GetPortBounds(GetWindowPort(w), &full);
+    midX = (full.left + full.right) / 2;
 
-    GetDialogItem(dlg, 1, &type, &itemH, &box);
-    midX = box.left + (box.right - box.left) / 2;
-
-    SetBackColor(kColorWindowBG);
     SetForeColor(kColorWindowBG);
-    PaintRect(&box);
+    PaintRect(&full);
     SetForeColor(kColorBlack);
     PenNormal();
 
-    SetRect(&iconRect, midX - 16, box.top + 6, midX + 16, box.top + 38);
+    SetRect(&iconRect, midX - 16, full.top + 6, midX + 16, full.top + 38);
     PlotIconID(&iconRect, atNone, ttNone, 128);
 
     /* Classic About-box convention: the app name is set in the bold
@@ -492,51 +542,54 @@ pascal void AboutDrawProc(DialogRef dlg, DialogItemIndex itemNo)
      * Geneva -- two distinct typefaces, not just two sizes of one. */
     TextFont(systemFont);
     TextFace(bold);
-    TextSize(14);
+    TextSize(18);
     CStrToPStr(s, "iWordle 1.0");
-    w = StringWidth(s);
-    MoveTo(midX - w / 2, box.top + 54);
-    DrawString(s);
+    DrawCenteredStringAt(midX, full.top + 56, s);
 
     /* Everything below the title is Geneva at one consistent size;
      * only bold/plain varies, matching the reference layout. */
     TextFont(kFontGeneva);
-    TextSize(9);
+    TextSize(10);
 
     TextFace(normal);
     CStrToPStr(s, "A native Wordle clone for Mac OS 9");
-    w = StringWidth(s);
-    MoveTo(midX - w / 2, box.top + 72);
-    DrawString(s);
+    DrawCenteredStringAt(midX, full.top + 74, s);
 
     TextFace(bold);
     CStrToPStr(s, "Bruno Castello");
-    w = StringWidth(s);
-    MoveTo(midX - w / 2, box.top + 98);
-    DrawString(s);
+    DrawCenteredStringAt(midX, full.top + 100, s);
 
     TextFace(normal);
     CStrToPStr(s, "bfcastello@hotmail.com");
-    w = StringWidth(s);
-    MoveTo(midX - w / 2, box.top + 116);
-    DrawString(s);
+    DrawCenteredStringAt(midX, full.top + 118, s);
 
     TextFace(bold);
     CStrToPStr(s, "Engineer: Claude Sonnet 5");
-    w = StringWidth(s);
-    MoveTo(midX - w / 2, box.top + 142);
-    DrawString(s);
+    DrawCenteredStringAt(midX, full.top + 144, s);
 
     TextFace(normal);
     CStrToPStr(s, "\xA9 Castello Designs, 2026");
-    w = StringWidth(s);
-    MoveTo(midX - w / 2, box.top + 168);
-    DrawString(s);
+    DrawCenteredStringAt(midX, full.top + 170, s);
 
     CStrToPStr(s, "Built with Retro68");
-    w = StringWidth(s);
-    MoveTo(midX - w / 2, box.top + 186);
-    DrawString(s);
+    DrawCenteredStringAt(midX, full.top + 188, s);
+
+    GetAboutOKButtonRect(&okRect);
+    DrawBevelRect(&okRect, kColorKeyFace);
+    SetForeColor(kColorBorder);
+    TextSize(12);
+    TextFace(bold);
+    CStrToPStr(s, "OK");
+    DrawCenteredStringAt((okRect.left + okRect.right) / 2,
+                          okRect.top + (okRect.bottom - okRect.top) / 2 + 4, s);
+    SetForeColor(kColorBlack);
+}
+
+static Boolean AboutOKHit(Point local)
+{
+    Rect r;
+    GetAboutOKButtonRect(&r);
+    return PtInRect(local, &r);
 }
 
 /* ---------------------------------------------------------------------- */
@@ -612,23 +665,10 @@ static void OnGiveUp(void)
 
 static void OnAbout(void)
 {
-    DialogPtr dlg;
-    short item;
-    DialogItemType type;
-    Handle itemH;
-    Rect box;
+    WindowPtr w = GetNewCWindow(201, NULL, (WindowPtr)-1);
+    if (w == NULL) return;
 
-    dlg = GetNewDialog(201, NULL, (WindowPtr)-1);
-    if (dlg == NULL) return;
-
-    GetDialogItem(dlg, 1, &type, &itemH, &box);
-    SetDialogItem(dlg, 1, type, (Handle)NewUserItemUPP(&AboutDrawProc), &box);
-
-    do {
-        ModalDialog(NewModalFilterUPP(&DismissOnEnterFilterProc), &item);
-    } while (item != 2);
-
-    DisposeDialog(dlg);
+    RunSimpleModalWindow(w, DrawAboutContent, AboutOKHit);
     RedrawAll();
 }
 

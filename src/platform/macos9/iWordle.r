@@ -1,13 +1,25 @@
 /*
  * Resource definitions for iWordle: menu bar, main document window, a
- * small default-Platinum message dialog (New Game confirm, Give Up,
- * Win / Lose), and a custom-drawn About box.
+ * small custom-drawn message window (New Game confirm, Give Up, Win /
+ * Lose), and a custom-drawn About window.
+ *
+ * The message and About windows are plain WIND resources, not Dialog
+ * Manager DLOG/DITL dialogs: we draw their entire content (background,
+ * text, and the OK button) ourselves and run our own small event loop
+ * for them, exactly like the main game window already does. This
+ * matches how classic Mac apps commonly built this kind of window --
+ * confirmed by inspecting a real one (OS9Map's About window is a plain
+ * WIND, procID dBoxProc, no DLOG/DITL/CNTL at all) -- and sidesteps a
+ * string of Dialog Manager/Appearance Manager quirks we hit trying to
+ * theme and lay out DLOG-based dialogs (backgrounds not repainting,
+ * overlapping DITL items swallowing clicks, StaticText not rendering
+ * once a background UserItem was added, native controls erasing their
+ * corners against the wrong background color).
  */
 
 #include "Types.r"
 #include "Windows.r"
 #include "Menus.r"
-#include "Dialogs.r"
 #include "Processes.r"
 
 /* ---------------------------------------------------------------------- */
@@ -57,63 +69,24 @@ resource 'WIND' (128, "iWordle") {
     centerMainScreen
 };
 
-/* ---------------------------------------------------------------------- */
-/* Small message dialog (New Game confirm, Give Up, Win / Lose)           */
-/*                                                                        */
-/* Item 1 is a UserItem that paints our own Platinum gray background on   */
-/* every redraw (Carbon's Appearance Manager doesn't do this for these    */
-/* classic dialogs). Its rect must NOT overlap the button: DITL hit-      */
-/* testing matches items in index order, and an overlapping background   */
-/* item would swallow clicks meant for the button underneath it.          */
-/* ---------------------------------------------------------------------- */
-
-resource 'DLOG' (200, "Message") {
-    { 100, 180, 220, 480 },
+resource 'WIND' (200, "Message") {
+    { 0, 0, 140, 340 },
     dBoxProc,
-    visible,
+    invisible,
     noGoAway,
     0,
-    200,
     "",
     centerMainScreen
 };
 
-resource 'DITL' (200) {
-    {
-        { 0, 0, 76, 300 },
-        UserItem { enabled };
-
-        { 80, 214, 104, 284 },
-        Button { enabled, "OK" };
-
-        { 12, 12, 70, 288 },
-        StaticText { disabled, "^0" };
-    }
-};
-
-/* ---------------------------------------------------------------------- */
-/* About box: custom-drawn content in a plain (no title bar) modal box    */
-/* ---------------------------------------------------------------------- */
-
-resource 'DLOG' (201, "About iWordle") {
-    { 130, 170, 375, 450 },
+resource 'WIND' (201, "About iWordle") {
+    { 0, 0, 236, 280 },
     dBoxProc,
-    visible,
+    invisible,
     noGoAway,
     0,
-    201,
     "",
     centerMainScreen
-};
-
-resource 'DITL' (201) {
-    {
-        { 0, 0, 200, 280 },
-        UserItem { enabled };
-
-        { 210, 110, 234, 170 },
-        Button { enabled, "OK" };
-    }
 };
 
 /* ---------------------------------------------------------------------- */
