@@ -564,15 +564,20 @@ static void ShowMessage(ConstStr255Param msg)
     GetDialogItem(dlg, 3, &type, &itemH, &box);
     SetDialogItem(dlg, 3, type, (Handle)NewUserItemUPP(&ButtonFrameProc), &box);
 
-    /* Force one fully-patched draw up front, rather than relying on
-     * whichever update event happens to be first through the filter:
-     * that was landing inconsistently (some dialogs showed clean
-     * corners, others didn't) depending on what else was going on in
-     * the event stream right before the dialog opened. */
-    SetPortWindowPort((WindowPtr)dlg);
-    DrawDialog(dlg);
-    DrawControls((WindowPtr)dlg);
-    PatchButtonCorners(dlg);
+    /* Explicitly invalidate the whole window rather than trusting
+     * GetNewDialog's implicit "newly visible" update region (that was
+     * landing inconsistently -- some dialogs showed clean corners on
+     * first paint, others didn't, depending on what else was going on
+     * in the event stream right before the dialog opened). This still
+     * goes through the filter's own updateEvt handling below, which is
+     * the one path we've confirmed reliably draws the button, its
+     * frame, and the corner patch in the right order. */
+    {
+        Rect windowRect;
+        SetPortWindowPort((WindowPtr)dlg);
+        GetPortBounds(GetWindowPort((WindowPtr)dlg), &windowRect);
+        InvalRect(&windowRect);
+    }
 
     do {
         ModalDialog(NewModalFilterUPP(&DismissOnEnterFilterProc), &item);
@@ -743,15 +748,20 @@ static void OnAbout(void)
     GetDialogItem(dlg, 3, &type, &itemH, &box);
     SetDialogItem(dlg, 3, type, (Handle)NewUserItemUPP(&ButtonFrameProc), &box);
 
-    /* Force one fully-patched draw up front, rather than relying on
-     * whichever update event happens to be first through the filter:
-     * that was landing inconsistently (some dialogs showed clean
-     * corners, others didn't) depending on what else was going on in
-     * the event stream right before the dialog opened. */
-    SetPortWindowPort((WindowPtr)dlg);
-    DrawDialog(dlg);
-    DrawControls((WindowPtr)dlg);
-    PatchButtonCorners(dlg);
+    /* Explicitly invalidate the whole window rather than trusting
+     * GetNewDialog's implicit "newly visible" update region (that was
+     * landing inconsistently -- some dialogs showed clean corners on
+     * first paint, others didn't, depending on what else was going on
+     * in the event stream right before the dialog opened). This still
+     * goes through the filter's own updateEvt handling below, which is
+     * the one path we've confirmed reliably draws the button, its
+     * frame, and the corner patch in the right order. */
+    {
+        Rect windowRect;
+        SetPortWindowPort((WindowPtr)dlg);
+        GetPortBounds(GetWindowPort((WindowPtr)dlg), &windowRect);
+        InvalRect(&windowRect);
+    }
 
     do {
         ModalDialog(NewModalFilterUPP(&DismissOnEnterFilterProc), &item);
