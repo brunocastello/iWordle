@@ -111,6 +111,7 @@ static ControlHandle gNameFieldControl = NULL;
 static OSErr gDebugFocusErr = 1;
 static short gDebugLastPart = -999;
 static short gDebugKeyCount = 0;
+static OSErr gDebugRootErr = 1;
 
 /* ---------------------------------------------------------------------- */
 /* Forward declarations                                                   */
@@ -974,7 +975,10 @@ pascal void NameEntryContentDrawProc(DialogRef dlg, DialogItemIndex itemNo)
         Str255 dbg;
         Str255 numStr;
 
-        CStrToPStr(dbg, "SKF=");
+        CStrToPStr(dbg, "RC=");
+        NumToString((long)gDebugRootErr, numStr);
+        PStrAppend(dbg, numStr);
+        PStrAppend(dbg, "\p SKF=");
         NumToString((long)gDebugFocusErr, numStr);
         PStrAppend(dbg, numStr);
         PStrAppend(dbg, "\p HCK=");
@@ -1005,14 +1009,17 @@ static Boolean PromptForPlayerName(Str255 outName)
     dlg = GetNewDialog(202, NULL, (WindowPtr)-1);
     if (dlg == NULL) { outName[0] = 0; return false; }
 
-    /* A window created via the classic Dialog Manager (GetNewDialog) has
-     * no root control -- that's an Appearance-era concept, and without
-     * one SetKeyboardFocus fails outright with errNoRootControl (-30586,
-     * confirmed via on-screen diagnostics). CreateRootControl gives the
-     * window the container the keyboard-focus system needs to exist. */
+    /* Unconditionally calling CreateRootControl made the OK button and
+     * the field both vanish -- that only makes sense if GetNewDialog
+     * already gave this window a root control, and forcibly recreating
+     * one corrupted the existing DITL control hierarchy. Check first via
+     * GetRootControl, and only create one if that genuinely fails. */
     {
         ControlRef rootControl;
-        CreateRootControl((WindowPtr)dlg, &rootControl);
+        gDebugRootErr = GetRootControl((WindowPtr)dlg, &rootControl);
+        if (gDebugRootErr != noErr) {
+            gDebugRootErr = CreateRootControl((WindowPtr)dlg, &rootControl);
+        }
     }
 
     GetDialogItem(dlg, 1, &type, &itemH, &box);
