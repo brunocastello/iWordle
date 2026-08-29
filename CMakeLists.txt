@@ -8,6 +8,7 @@ add_application(iWordle
     ${CORE_DIR}/wordle_engine.c
     ${PLATFORM_MACOS9_DIR}/main.c
     ${PLATFORM_MACOS9_DIR}/iWordle.r
+    ${PLATFORM_MACOS9_DIR}/icons.r
     TYPE "APPL"
     CREATOR "WRDL"
 )
