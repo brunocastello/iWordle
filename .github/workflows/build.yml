@@ -19,6 +19,7 @@ jobs:
             -w /root/iWordle \
             -i ghcr.io/autc04/retro68 /bin/bash <<'EOF'
           set -euo pipefail
+          /Retro68-build/bin/interfaces-and-libraries.sh /Retro68-build/toolchain /root/iWordle/third_party/InterfacesAndLibraries
           mkdir -p build
           cd build
           cmake .. -DCMAKE_TOOLCHAIN_FILE=/Retro68-build/toolchain/powerpc-apple-macos/cmake/retrocarbon.toolchain.cmake
