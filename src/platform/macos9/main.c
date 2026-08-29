@@ -16,6 +16,7 @@
 #include <ToolUtils.h>
 #include <TextUtils.h>
 #include <OSUtils.h>
+#include <Icons.h>
 
 #include <string.h>
 #include <ctype.h>
@@ -99,7 +100,6 @@ static Boolean gDone = false;
 /* ---------------------------------------------------------------------- */
 
 pascal void AboutDrawProc(DialogRef dlg, DialogItemIndex itemNo);
-pascal Boolean AboutFilterProc(DialogPtr dlg, EventRecord *event, short *itemHit);
 
 static void GetTileRect(short row, short col, Rect *outRect);
 static void GetLetterKeyRect(short row, short idx, Rect *outRect);
@@ -396,72 +396,72 @@ static void ShowMessage(ConstStr255Param msg)
 }
 
 /* ---------------------------------------------------------------------- */
-/* About box: custom-drawn content (app name, author, copyright/version)  */
-/* in a native movable modal window; dismissed by a click anywhere or by  */
-/* Return/Enter/Escape, via a modal filter rather than a visible button.  */
+/* About box: custom-drawn content (icon, app name/version, author,       */
+/* credits) in a native movable modal window with a plain OK button.      */
 /* ---------------------------------------------------------------------- */
 
 pascal void AboutDrawProc(DialogRef dlg, DialogItemIndex itemNo)
 {
     DialogItemType type;
     Handle itemH;
-    Rect box;
+    Rect box, iconRect;
     Str255 s;
     short w, midX;
 
     (void)itemNo;
 
-    GetDialogItem(dlg, 1, &type, &itemH, &box);
+    GetDialogItem(dlg, 2, &type, &itemH, &box);
     midX = box.left + (box.right - box.left) / 2;
 
     SetForeColor(kColorBlack);
     PenNormal();
 
+    SetRect(&iconRect, midX - 16, box.top + 6, midX + 16, box.top + 38);
+    PlotIconID(&iconRect, atNone, ttNone, 128);
+
     TextFont(kFontGeneva);
     TextFace(bold);
-    TextSize(18);
-    CStrToPStr(s, "iWordle");
+    TextSize(14);
+    CStrToPStr(s, "iWordle 1.0");
     w = StringWidth(s);
-    MoveTo(midX - w / 2, box.top + 36);
+    MoveTo(midX - w / 2, box.top + 54);
     DrawString(s);
 
     TextFace(normal);
-    TextSize(12);
+    TextSize(9);
+    CStrToPStr(s, "A native Wordle clone for Mac OS 9");
+    w = StringWidth(s);
+    MoveTo(midX - w / 2, box.top + 68);
+    DrawString(s);
+
+    TextFace(bold);
+    TextSize(11);
     CStrToPStr(s, "Bruno Castello");
     w = StringWidth(s);
-    MoveTo(midX - w / 2, box.top + 60);
+    MoveTo(midX - w / 2, box.top + 88);
     DrawString(s);
 
-    MoveTo(box.left + 20, box.bottom - 28);
-    LineTo(box.right - 20, box.bottom - 28);
-
+    TextFace(normal);
     TextSize(9);
-    CStrToPStr(s, "\xA9 Castello Designs, 2026");
-    MoveTo(box.left + 20, box.bottom - 12);
-    DrawString(s);
-
-    CStrToPStr(s, "Version 1.0");
+    CStrToPStr(s, "bfcastello@hotmail.com");
     w = StringWidth(s);
-    MoveTo(box.right - 20 - w, box.bottom - 12);
+    MoveTo(midX - w / 2, box.top + 100);
     DrawString(s);
-}
 
-pascal Boolean AboutFilterProc(DialogPtr dlg, EventRecord *event, short *itemHit)
-{
-    (void)dlg;
+    CStrToPStr(s, "Engineer: Claude Sonnet 5");
+    w = StringWidth(s);
+    MoveTo(midX - w / 2, box.top + 118);
+    DrawString(s);
 
-    if (event->what == mouseDown) {
-        *itemHit = 1;
-        return true;
-    }
-    if (event->what == keyDown || event->what == autoKey) {
-        char c = (char)(event->message & charCodeMask);
-        if (c == '\r' || c == 3 || c == 0x1B) {
-            *itemHit = 1;
-            return true;
-        }
-    }
-    return false;
+    CStrToPStr(s, "\xA9 Castello Designs, 2026");
+    w = StringWidth(s);
+    MoveTo(midX - w / 2, box.top + 136);
+    DrawString(s);
+
+    CStrToPStr(s, "Built with Retro68");
+    w = StringWidth(s);
+    MoveTo(midX - w / 2, box.top + 148);
+    DrawString(s);
 }
 
 /* ---------------------------------------------------------------------- */
@@ -546,11 +546,11 @@ static void OnAbout(void)
     dlg = GetNewDialog(201, NULL, (WindowPtr)-1);
     if (dlg == NULL) return;
 
-    GetDialogItem(dlg, 1, &type, &itemH, &box);
-    SetDialogItem(dlg, 1, type, (Handle)NewUserItemUPP(&AboutDrawProc), &box);
+    GetDialogItem(dlg, 2, &type, &itemH, &box);
+    SetDialogItem(dlg, 2, type, (Handle)NewUserItemUPP(&AboutDrawProc), &box);
 
     do {
-        ModalDialog(NewModalFilterUPP(&AboutFilterProc), &item);
+        ModalDialog(NULL, &item);
     } while (item != 1);
 
     DisposeDialog(dlg);
