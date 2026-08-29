@@ -17,6 +17,7 @@
 #include <TextUtils.h>
 #include <OSUtils.h>
 #include <Icons.h>
+#include <AppleEvents.h>
 
 #include <string.h>
 #include <ctype.h>
@@ -100,6 +101,9 @@ static Boolean gDone = false;
 /* ---------------------------------------------------------------------- */
 
 pascal void AboutDrawProc(DialogRef dlg, DialogItemIndex itemNo);
+pascal void MessageBackgroundProc(DialogRef dlg, DialogItemIndex itemNo);
+pascal Boolean DismissOnEnterFilterProc(DialogPtr dlg, EventRecord *event, short *itemHit);
+static void PaintDialogBackground(DialogRef dlg, DialogItemIndex bgItem);
 
 static void GetTileRect(short row, short col, Rect *outRect);
 static void GetLetterKeyRect(short row, short idx, Rect *outRect);
@@ -134,6 +138,7 @@ static void HandleMouseDown(EventRecord *event);
 static void HandleKeyDown(EventRecord *event);
 static void HandleUpdate(EventRecord *event);
 static void HandleEvent(EventRecord *event);
+static void InstallAppleEventHandlers(void);
 static void RunEventLoop(void);
 
 /* ---------------------------------------------------------------------- */
@@ -182,18 +187,21 @@ static void SetForeColor(RGBColor color)
     RGBForeColor(&color);
 }
 
-static void SetBackColor(RGBColor color)
+/* Carbon's Appearance Manager doesn't pick up RGBBackColor for these
+ * classic dialogs, so the only reliable way to get a Platinum gray
+ * background (instead of the Dialog Manager's default white) is to
+ * paint it ourselves, every time the dialog redraws. bgItem must be a
+ * UserItem covering the whole dialog and drawn before any item that
+ * should appear on top of it (i.e. it should be item 1). */
+static void PaintDialogBackground(DialogRef dlg, DialogItemIndex bgItem)
 {
-    RGBBackColor(&color);
-}
+    DialogItemType type;
+    Handle itemH;
+    Rect box;
 
-/* Makes a dialog's window erase to our Platinum gray (instead of the
- * Dialog Manager's default white) on every update, including the first
- * draw when it's shown. Must be called before the modal event loop. */
-static void SetDialogPlatinumBackground(DialogPtr dlg)
-{
-    SetPortWindowPort((WindowPtr)dlg);
-    SetBackColor(kColorWindowBG);
+    GetDialogItem(dlg, bgItem, &type, &itemH, &box);
+    SetForeColor(kColorWindowBG);
+    PaintRect(&box);
 }
 
 static void DrawBevelRect(const Rect *r, RGBColor fill)
@@ -386,26 +394,57 @@ static void BuildLoseMessage(Str255 out)
 }
 
 /* ---------------------------------------------------------------------- */
-/* Message dialog                                                          */
+/* Shared modal helpers                                                    */
 /*                                                                        */
-/* Plain Button + StaticText DITL items, left entirely to Mac OS 9's      */
-/* Appearance Manager to render with the standard Platinum look.          */
+/* Item 1 in both dialogs is a background-painting UserItem (so it must   */
+/* draw first); item 2 is always the OK button. Pressing Return normally  */
+/* only triggers item 1 by Dialog Manager convention, so a filter proc    */
+/* remaps it to item 2 instead of relying on raw item ordering.           */
 /* ---------------------------------------------------------------------- */
+
+pascal Boolean DismissOnEnterFilterProc(DialogPtr dlg, EventRecord *event, short *itemHit)
+{
+    (void)dlg;
+
+    if (event->what == keyDown || event->what == autoKey) {
+        char c = (char)(event->message & charCodeMask);
+        if (c == '\r' || c == 3) {
+            *itemHit = 2;
+            return true;
+        }
+    }
+    return false;
+}
+
+/* ---------------------------------------------------------------------- */
+/* Message dialog                                                          */
+/* ---------------------------------------------------------------------- */
+
+pascal void MessageBackgroundProc(DialogRef dlg, DialogItemIndex itemNo)
+{
+    (void)itemNo;
+    PaintDialogBackground(dlg, 1);
+}
 
 static void ShowMessage(ConstStr255Param msg)
 {
     DialogPtr dlg;
     short item;
+    DialogItemType type;
+    Handle itemH;
+    Rect box;
 
     ParamText(msg, "\p", "\p", "\p");
 
     dlg = GetNewDialog(200, NULL, (WindowPtr)-1);
     if (dlg == NULL) return;
-    SetDialogPlatinumBackground(dlg);
+
+    GetDialogItem(dlg, 1, &type, &itemH, &box);
+    SetDialogItem(dlg, 1, type, (Handle)NewUserItemUPP(&MessageBackgroundProc), &box);
 
     do {
-        ModalDialog(NULL, &item);
-    } while (item != 1);
+        ModalDialog(NewModalFilterUPP(&DismissOnEnterFilterProc), &item);
+    } while (item != 2);
 
     DisposeDialog(dlg);
     RedrawAll();
@@ -426,9 +465,11 @@ pascal void AboutDrawProc(DialogRef dlg, DialogItemIndex itemNo)
 
     (void)itemNo;
 
-    GetDialogItem(dlg, 2, &type, &itemH, &box);
+    GetDialogItem(dlg, 1, &type, &itemH, &box);
     midX = box.left + (box.right - box.left) / 2;
 
+    SetForeColor(kColorWindowBG);
+    PaintRect(&box);
     SetForeColor(kColorBlack);
     PenNormal();
 
@@ -443,22 +484,23 @@ pascal void AboutDrawProc(DialogRef dlg, DialogItemIndex itemNo)
     MoveTo(midX - w / 2, box.top + 54);
     DrawString(s);
 
-    TextFace(normal);
+    /* Everything below the title is the same size; only bold/plain
+     * varies, matching the reference layout's visual hierarchy. */
     TextSize(9);
+
+    TextFace(normal);
     CStrToPStr(s, "A native Wordle clone for Mac OS 9");
     w = StringWidth(s);
     MoveTo(midX - w / 2, box.top + 72);
     DrawString(s);
 
     TextFace(bold);
-    TextSize(11);
     CStrToPStr(s, "Bruno Castello");
     w = StringWidth(s);
     MoveTo(midX - w / 2, box.top + 98);
     DrawString(s);
 
     TextFace(normal);
-    TextSize(9);
     CStrToPStr(s, "bfcastello@hotmail.com");
     w = StringWidth(s);
     MoveTo(midX - w / 2, box.top + 116);
@@ -563,14 +605,13 @@ static void OnAbout(void)
 
     dlg = GetNewDialog(201, NULL, (WindowPtr)-1);
     if (dlg == NULL) return;
-    SetDialogPlatinumBackground(dlg);
 
-    GetDialogItem(dlg, 2, &type, &itemH, &box);
-    SetDialogItem(dlg, 2, type, (Handle)NewUserItemUPP(&AboutDrawProc), &box);
+    GetDialogItem(dlg, 1, &type, &itemH, &box);
+    SetDialogItem(dlg, 1, type, (Handle)NewUserItemUPP(&AboutDrawProc), &box);
 
     do {
-        ModalDialog(NULL, &item);
-    } while (item != 1);
+        ModalDialog(NewModalFilterUPP(&DismissOnEnterFilterProc), &item);
+    } while (item != 2);
 
     DisposeDialog(dlg);
     RedrawAll();
@@ -697,12 +738,53 @@ static void HandleUpdate(EventRecord *event)
 static void HandleEvent(EventRecord *event)
 {
     switch (event->what) {
-        case mouseDown: HandleMouseDown(event); break;
+        case mouseDown:       HandleMouseDown(event);        break;
         case keyDown:
-        case autoKey:   HandleKeyDown(event);   break;
-        case updateEvt: HandleUpdate(event);    break;
+        case autoKey:         HandleKeyDown(event);          break;
+        case updateEvt:       HandleUpdate(event);           break;
+        case kHighLevelEvent: AEProcessAppleEvent(event);    break;
         default: break;
     }
+}
+
+/* ---------------------------------------------------------------------- */
+/* Apple Events                                                            */
+/*                                                                        */
+/* External quit requests (a Dock-replacement utility's "Quit", the       */
+/* Finder, AppleScript, system shutdown) arrive as a kAEQuitApplication   */
+/* Apple Event, not a menu click -- without a handler for it, they were   */
+/* silently dropped and the app never quit. The other three core events   */
+/* are required of every well-behaved application even though this game  */
+/* has nothing to do for them.                                            */
+/* ---------------------------------------------------------------------- */
+
+static pascal OSErr HandleQuitAE(const AppleEvent *event, AppleEvent *reply, long refcon)
+{
+    (void)event;
+    (void)reply;
+    (void)refcon;
+    gDone = true;
+    return noErr;
+}
+
+static pascal OSErr HandleNoOpAE(const AppleEvent *event, AppleEvent *reply, long refcon)
+{
+    (void)event;
+    (void)reply;
+    (void)refcon;
+    return noErr;
+}
+
+static void InstallAppleEventHandlers(void)
+{
+    AEInstallEventHandler(kCoreEventClass, kAEOpenApplication,
+                           NewAEEventHandlerUPP(&HandleNoOpAE), 0, false);
+    AEInstallEventHandler(kCoreEventClass, kAEOpenDocuments,
+                           NewAEEventHandlerUPP(&HandleNoOpAE), 0, false);
+    AEInstallEventHandler(kCoreEventClass, kAEPrintDocuments,
+                           NewAEEventHandlerUPP(&HandleNoOpAE), 0, false);
+    AEInstallEventHandler(kCoreEventClass, kAEQuitApplication,
+                           NewAEEventHandlerUPP(&HandleQuitAE), 0, false);
 }
 
 static void RunEventLoop(void)
@@ -731,6 +813,7 @@ int main(void)
 #endif
     InitCursor();
     FlushEvents(everyEvent, 0);
+    InstallAppleEventHandlers();
 
     {
         Handle mbar = GetNewMBar(128);

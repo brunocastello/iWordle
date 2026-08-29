@@ -60,9 +60,10 @@ resource 'WIND' (128, "iWordle") {
 /* ---------------------------------------------------------------------- */
 /* Small message dialog (New Game confirm, Give Up, Win / Lose)           */
 /*                                                                        */
-/* Plain Button + StaticText items only, so Mac OS 9's Appearance         */
-/* Manager renders them with the standard Platinum look, rather than      */
-/* any custom-drawn chrome.                                               */
+/* Item 1 is a UserItem covering the whole dialog that paints our own     */
+/* Platinum gray background on every redraw (Carbon's Appearance         */
+/* Manager doesn't pick up RGBBackColor for these classic dialogs), so    */
+/* it must be drawn before the button/text items that sit on top of it.   */
 /* ---------------------------------------------------------------------- */
 
 resource 'DLOG' (200, "Message") {
@@ -78,6 +79,9 @@ resource 'DLOG' (200, "Message") {
 
 resource 'DITL' (200) {
     {
+        { 0, 0, 120, 300 },
+        UserItem { enabled };
+
         { 80, 214, 104, 284 },
         Button { enabled, "OK" };
 
@@ -87,27 +91,27 @@ resource 'DITL' (200) {
 };
 
 /* ---------------------------------------------------------------------- */
-/* About box: custom-drawn content in a native movable modal window       */
+/* About box: custom-drawn content in a plain (no title bar) modal box    */
 /* ---------------------------------------------------------------------- */
 
 resource 'DLOG' (201, "About iWordle") {
     { 130, 170, 375, 450 },
-    movableDBoxProc,
+    dBoxProc,
     visible,
     noGoAway,
     0,
     201,
-    "About iWordle...",
+    "",
     centerMainScreen
 };
 
 resource 'DITL' (201) {
     {
+        { 0, 0, 245, 280 },
+        UserItem { enabled };
+
         { 210, 110, 234, 170 },
         Button { enabled, "OK" };
-
-        { 0, 0, 200, 280 },
-        UserItem { enabled };
     }
 };
 
