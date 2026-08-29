@@ -517,6 +517,7 @@ static void ShowMessage(ConstStr255Param msg)
     SetDialogItem(dlg, 3, type, (Handle)NewUserItemUPP(&ButtonFrameProc), &box);
 
     DrawDialog(dlg);
+    DrawControls(dlg);
 
     do {
         ModalDialog(NewModalFilterUPP(&DismissOnEnterFilterProc), &item);
@@ -688,6 +689,7 @@ static void OnAbout(void)
     SetDialogItem(dlg, 3, type, (Handle)NewUserItemUPP(&ButtonFrameProc), &box);
 
     DrawDialog(dlg);
+    DrawControls(dlg);
 
     do {
         ModalDialog(NewModalFilterUPP(&DismissOnEnterFilterProc), &item);
