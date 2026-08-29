@@ -123,22 +123,18 @@ resource 'DITL' (201) {
 
 /* ---- Player name entry (DLOG 202 + DITL 202) ----
    Shown after every win/loss to attribute the result to a player. Item 1
-   is the usual background+label UserItem; item 2 is a real native
-   EditText field (Dialog Manager wires up its focus/typing/caret
-   automatically -- SelectDialogItemText just needs to be called once
-   after the dialog opens); item 3 is the OK button; item 4 is the
-   ButtonFrameProc ring around it, same as every other dialog here.
-
-   This renders as a plain flat-framed white box, not the Appearance
-   Manager's sunken-bezel-plus-focus-ring look real Mac OS 9.2 uses --
-   a real Control Manager Edit Text control (kControlEditTextProc) was
-   tried instead to get that, but this Retro68 build's open-source
-   Multiversal Interfaces only reimplements the pre-Appearance (System 7
-   era) Control Manager: no kControlEditTextProc, no Get/SetControlData,
-   no HandleControlKey, no SetKeyboardFocus -- confirmed by checking
-   ControlMgr.yaml in autc04/multiversal's own header generator, which
-   has none of them. This DITL editText item is the most native this
-   specific toolchain can render a text field. */
+   is the usual background+label UserItem; item 2 is a plain UserItem
+   that only reserves layout space -- the actual field is a real
+   Appearance Manager Edit Text control (kControlEditTextProc) created at
+   runtime in PromptForPlayerName (main.c), which is what renders the
+   sunken box + blue focus ring real Mac OS 9.2 uses. That requires the
+   real Control Manager (kControlEditTextProc, Get/SetControlData,
+   HandleControlKey, SetKeyboardFocus), which this project's Retro68
+   toolchain now links against Apple's real Universal Interfaces for
+   (see third_party/InterfacesAndLibraries and .github/workflows/build.yml)
+   instead of the open-source Multiversal reimplementation, which never
+   had any of it. Item 3 is the OK button; item 4 is the ButtonFrameProc
+   ring around it, same as every other dialog here. */
 resource 'DLOG' (202, "Who's Playing?") {
     { 0, 0, 160, 320 },
     dBoxProc,
@@ -156,7 +152,7 @@ resource 'DITL' (202) {
         UserItem { enabled };
 
         { 67, 60, 85, 260 },
-        EditText { enabled, "" };
+        UserItem { enabled };
 
         { 118, 125, 142, 195 },
         Button { enabled, "OK" };

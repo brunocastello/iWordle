@@ -12,6 +12,8 @@
 #include <Menus.h>
 #include <Fonts.h>
 #include <Dialogs.h>
+#include <Controls.h>
+#include <ControlDefinitions.h>
 #include <Events.h>
 #include <ToolUtils.h>
 #include <TextUtils.h>
@@ -20,7 +22,7 @@
 #include <Icons.h>
 #include <AppleEvents.h>
 #include <Files.h>
-#include <Processes.h>
+#include <Folders.h>
 
 #include <string.h>
 #include <ctype.h>
@@ -101,6 +103,7 @@ static WordleGame gGame;
 static Boolean gDone = false;
 static WordleStatsBook gStats;
 static Str255 gLastPlayerName = { 0 };
+static ControlHandle gNameFieldControl = NULL;
 
 /* ---------------------------------------------------------------------- */
 /* Forward declarations                                                   */
@@ -112,9 +115,9 @@ pascal void NameEntryContentDrawProc(DialogRef dlg, DialogItemIndex itemNo);
 pascal void StatsContentDrawProc(DialogRef dlg, DialogItemIndex itemNo);
 pascal Boolean DismissOnEnterFilterProc(DialogPtr dlg, EventRecord *event, short *itemHit);
 pascal Boolean DismissOnEnterFilterProc3(DialogPtr dlg, EventRecord *event, short *itemHit);
+pascal Boolean NameEntryFilterProc(DialogPtr dlg, EventRecord *event, short *itemHit);
 pascal void ButtonFrameProc(DialogRef dlg, DialogItemIndex itemNo);
 static void PaintFullDialogBackground(DialogRef dlg);
-static void PaintDialogBackgroundExcluding(DialogRef dlg, const Rect *holeRect);
 
 static void PStrToCStr(char *dst, ConstStr255Param src, size_t dstSize);
 static Boolean GetStatsFileSpec(FSSpec *spec);
@@ -422,25 +425,19 @@ static void BuildLoseMessage(Str255 out)
 /* ---------------------------------------------------------------------- */
 /* Statistics persistence                                                  */
 /*                                                                        */
-/* Stored as a flat dump of WordleStatsBook in an "Application             */
-/* Support:iWordle:" folder next to the application, mirroring the shape  */
-/* a future Mac OS X port would use under ~/Library/Application Support   */
-/* -- but anchored at the app's own folder rather than the real System    */
-/* Folder, because that turned out not to be reachable here (see below).  */
+/* Stored as a flat dump of WordleStatsBook in System Folder:Application  */
+/* Support:iWordle: -- the same place (and same per-app subfolder shape)  */
+/* a future Mac OS X port would use under ~/Library/Application Support,  */
+/* so the on-disk convention doesn't have to change when this is ported.  */
 /*                                                                        */
-/* Two things were tried and ruled out with real linker evidence, not     */
-/* guesses: (1) the Folder Manager (FindFolder) doesn't exist anywhere in */
-/* this toolchain -- no Folders.yaml in autc04/multiversal's own header   */
-/* generator, same reason Controls.h/Appearance.h don't exist as files.   */
-/* (2) the classic pre-Folder-Manager fallback (SysEnvirons's sysVRefNum  */
-/* + GetWDInfo, which DOES have yaml entries and DOES compile) still      */
-/* fails at link time under "-carbon": `undefined reference to            */
-/* .SysEnvirons/.GetWDInfo`. That matches real Apple Carbon, which        */
-/* dropped exactly these old raw-trap calls -- so under this toolchain's  */
-/* Carbon link mode there is currently no working way to locate the       */
-/* System Folder at all. The app's own folder, found via                 */
-/* GetProcessInformation's processAppSpec, is the one location-finding    */
-/* mechanism confirmed to link successfully under Carbon here.            */
+/* This needs the real Folder Manager (FindFolder): the open-source       */
+/* Multiversal Interfaces this toolchain used by default doesn't have one */
+/* at all, and its classic pre-Folder-Manager fallback (SysEnvirons +     */
+/* GetWDInfo) compiles but won't link under Carbon, matching how real     */
+/* Apple Carbon actually dropped those calls. Both problems go away now   */
+/* that this project links against Apple's real Universal Interfaces      */
+/* (see third_party/InterfacesAndLibraries), where FindFolder is a real,  */
+/* Carbon-linkable call. */
 /* ---------------------------------------------------------------------- */
 
 static OSErr ResolveOrCreateSubfolder(short vRefNum, long parentDirID,
@@ -468,29 +465,20 @@ static OSErr ResolveOrCreateSubfolder(short vRefNum, long parentDirID,
 
 static OSErr GetStatsFolder(short *outVRefNum, long *outDirID)
 {
-    ProcessSerialNumber psn;
-    ProcessInfoRec info;
-    FSSpec appSpec;
+    short vRefNum;
     long appSupportDirID;
     Str255 name;
     OSErr err;
 
-    GetCurrentProcess(&psn);
-    memset(&info, 0, sizeof(info));
-    info.processInfoLength = sizeof(info);
-    info.processAppSpec = &appSpec;
-    err = GetProcessInformation(&psn, &info);
-    if (err != noErr) return err;
-
-    CStrToPStr(name, "Application Support");
-    err = ResolveOrCreateSubfolder(appSpec.vRefNum, appSpec.parID, name, &appSupportDirID);
+    err = FindFolder(kOnSystemDisk, kApplicationSupportFolderType, kCreateFolder,
+                      &vRefNum, &appSupportDirID);
     if (err != noErr) return err;
 
     CStrToPStr(name, "iWordle");
-    err = ResolveOrCreateSubfolder(appSpec.vRefNum, appSupportDirID, name, outDirID);
+    err = ResolveOrCreateSubfolder(vRefNum, appSupportDirID, name, outDirID);
     if (err != noErr) return err;
 
-    *outVRefNum = appSpec.vRefNum;
+    *outVRefNum = vRefNum;
     return noErr;
 }
 
@@ -580,9 +568,8 @@ pascal Boolean DismissOnEnterFilterProc(DialogPtr dlg, EventRecord *event, short
     return false;
 }
 
-/* Same remap as above, for the name-entry and statistics dialogs, whose
- * default button sits at item 3 instead of item 2 (an EditText or a
- * second Button comes first). */
+/* Same remap as above, for the statistics dialog, whose default button
+ * sits at item 3 instead of item 2 (the Clear button comes first). */
 pascal Boolean DismissOnEnterFilterProc3(DialogPtr dlg, EventRecord *event, short *itemHit)
 {
     (void)dlg;
@@ -594,6 +581,49 @@ pascal Boolean DismissOnEnterFilterProc3(DialogPtr dlg, EventRecord *event, shor
             return true;
         }
     }
+    return false;
+}
+
+/* Modal filter for the name-entry dialog, whose field is a real
+ * Appearance Manager Edit Text control (gNameFieldControl, kControlEditTextProc)
+ * rather than a DITL editText item -- ModalDialog only knows how to route
+ * keystrokes and clicks to DITL items, so this proc forwards both to the
+ * control by hand: HandleControlKey feeds it every non-Return keystroke,
+ * and FindControl/TrackControl handle click-to-position and drag-select
+ * the same way the control's own CDEF would if ModalDialog knew about it. */
+pascal Boolean NameEntryFilterProc(DialogPtr dlg, EventRecord *event, short *itemHit)
+{
+    if (event->what == keyDown || event->what == autoKey) {
+        char c = (char)(event->message & charCodeMask);
+        if (c == '\r' || c == 3) {
+            *itemHit = 3;
+            return true;
+        }
+        if (gNameFieldControl != NULL) {
+            short keyCode = (short)((event->message & keyCodeMask) >> 8);
+            HandleControlKey(gNameFieldControl, keyCode, c, event->modifiers);
+        }
+        *itemHit = 0;
+        return true;
+    }
+
+    if (event->what == mouseDown && gNameFieldControl != NULL) {
+        WindowPtr w = (WindowPtr)dlg;
+        Point local = event->where;
+        ControlHandle hitControl = NULL;
+
+        SetPortWindowPort(w);
+        GlobalToLocal(&local);
+        FindControl(local, w, &hitControl);
+
+        if (hitControl == gNameFieldControl) {
+            SetKeyboardFocus(w, gNameFieldControl, kControlEditTextPart);
+            TrackControl(gNameFieldControl, local, NULL);
+            *itemHit = 0;
+            return true;
+        }
+    }
+
     return false;
 }
 
@@ -628,33 +658,6 @@ static void PaintFullDialogBackground(DialogRef dlg)
     SetBackColor(kColorWindowBG);
     SetForeColor(kColorWindowBG);
     PaintRect(&windowRect);
-}
-
-/* Same gray fill as PaintFullDialogBackground, but leaves holeRect
- * completely untouched -- used to keep a native EditText item's own
- * default white background intact instead of painting over it and then
- * patching a white rect back in, which is still hand-drawing the field
- * even if it looks the same. DrawDialog() never erases an EditText
- * item's interior itself, so whatever we leave under it here is what
- * the field ends up looking like. */
-static void PaintDialogBackgroundExcluding(DialogRef dlg, const Rect *holeRect)
-{
-    Rect windowRect;
-    RgnHandle bgRgn;
-    RgnHandle holeRgn;
-
-    GetPortBounds(GetWindowPort((WindowPtr)dlg), &windowRect);
-    SetBackColor(kColorWindowBG);
-    SetForeColor(kColorWindowBG);
-
-    bgRgn = NewRgn();
-    holeRgn = NewRgn();
-    RectRgn(bgRgn, &windowRect);
-    RectRgn(holeRgn, holeRect);
-    DiffRgn(bgRgn, holeRgn, bgRgn);
-    PaintRgn(bgRgn);
-    DisposeRgn(holeRgn);
-    DisposeRgn(bgRgn);
 }
 
 /* ---------------------------------------------------------------------- */
@@ -907,15 +910,15 @@ pascal void NameEntryContentDrawProc(DialogRef dlg, DialogItemIndex itemNo)
 {
     DialogItemType type;
     Handle itemH;
-    Rect box, fieldBox;
+    Rect box;
 
     (void)itemNo;
 
-    /* Leave item 2's rect out of the gray fill entirely so the native
-     * EditText field keeps its own default white background -- see
-     * PaintDialogBackgroundExcluding. */
-    GetDialogItem(dlg, 2, &type, &itemH, &fieldBox);
-    PaintDialogBackgroundExcluding(dlg, &fieldBox);
+    /* A real Appearance control draws its own complete bounds (sunken
+     * bezel and all) when DrawControls() reaches it, unlike a classic
+     * DITL editText item -- no need to protect its rect from the gray
+     * fill the way the old approach had to. */
+    PaintFullDialogBackground(dlg);
 
     GetDialogItem(dlg, 1, &type, &itemH, &box);
     SetForeColor(kColorBlack);
@@ -943,7 +946,7 @@ static Boolean PromptForPlayerName(Str255 outName)
     short item;
     DialogItemType type;
     Handle itemH;
-    Rect box;
+    Rect box, fieldBox;
 
     dlg = GetNewDialog(202, NULL, (WindowPtr)-1);
     if (dlg == NULL) { outName[0] = 0; return false; }
@@ -951,9 +954,18 @@ static Boolean PromptForPlayerName(Str255 outName)
     GetDialogItem(dlg, 1, &type, &itemH, &box);
     SetDialogItem(dlg, 1, type, (Handle)NewUserItemUPP(&NameEntryContentDrawProc), &box);
 
-    GetDialogItem(dlg, 2, &type, &itemH, &box);
-    SetDialogItemText(itemH, gLastPlayerName);
-    SelectDialogItemText(dlg, 2, 0, 32767);
+    /* Item 2 is a plain UserItem placeholder reserving layout space --
+     * the real field is a genuine Appearance Manager Edit Text control
+     * (kControlEditTextProc), created here since that's what actually
+     * renders the sunken box + blue focus ring real Mac OS 9.2 uses. */
+    GetDialogItem(dlg, 2, &type, &itemH, &fieldBox);
+    gNameFieldControl = NewControl((WindowPtr)dlg, &fieldBox, "\p", true,
+                                    0, 0, 0, kControlEditTextProc, 0L);
+    if (gNameFieldControl != NULL) {
+        SetControlData(gNameFieldControl, kControlEditTextPart, kControlEditTextTextTag,
+                        gLastPlayerName[0], (Ptr)(gLastPlayerName + 1));
+        SetKeyboardFocus((WindowPtr)dlg, gNameFieldControl, kControlEditTextPart);
+    }
 
     GetDialogItem(dlg, 4, &type, &itemH, &box);
     SetDialogItem(dlg, 4, type, (Handle)NewUserItemUPP(&ButtonFrameProc), &box);
@@ -961,12 +973,23 @@ static Boolean PromptForPlayerName(Str255 outName)
     DrawDialog(dlg);
     DrawControls((WindowPtr)dlg);
 
+    item = 0;
     do {
-        ModalDialog(NewModalFilterUPP(&DismissOnEnterFilterProc3), &item);
+        ModalDialog(NewModalFilterUPP(&NameEntryFilterProc), &item);
     } while (item != 3);
 
-    GetDialogItem(dlg, 2, &type, &itemH, &box);
-    GetDialogItemText(itemH, outName);
+    outName[0] = 0;
+    if (gNameFieldControl != NULL) {
+        long actualSize = 0;
+        char buf[256];
+        if (GetControlData(gNameFieldControl, kControlEditTextPart, kControlEditTextTextTag,
+                            sizeof(buf), buf, &actualSize) == noErr) {
+            if (actualSize > 255) actualSize = 255;
+            outName[0] = (unsigned char)actualSize;
+            memcpy(outName + 1, buf, (size_t)actualSize);
+        }
+    }
+    gNameFieldControl = NULL;
 
     DisposeDialog(dlg);
     RedrawAll();
