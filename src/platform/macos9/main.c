@@ -18,11 +18,13 @@
 #include <OSUtils.h>
 #include <Icons.h>
 #include <AppleEvents.h>
+#include <Files.h>
 
 #include <string.h>
 #include <ctype.h>
 
 #include "wordle_engine.h"
+#include "wordle_stats.h"
 
 #ifndef TARGET_API_MAC_CARBON
 #define NewUserItemUPP NewUserItemProc
@@ -95,6 +97,8 @@ static const RGBColor kColorBevelLo  = { C16(0x99), C16(0x99), C16(0x99) };
 static WindowPtr gWindow;
 static WordleGame gGame;
 static Boolean gDone = false;
+static WordleStatsBook gStats;
+static Str255 gLastPlayerName = { 0 };
 
 /* ---------------------------------------------------------------------- */
 /* Forward declarations                                                   */
@@ -102,9 +106,20 @@ static Boolean gDone = false;
 
 pascal void MessageContentDrawProc(DialogRef dlg, DialogItemIndex itemNo);
 pascal void AboutContentDrawProc(DialogRef dlg, DialogItemIndex itemNo);
+pascal void NameEntryContentDrawProc(DialogRef dlg, DialogItemIndex itemNo);
+pascal void StatsContentDrawProc(DialogRef dlg, DialogItemIndex itemNo);
 pascal Boolean DismissOnEnterFilterProc(DialogPtr dlg, EventRecord *event, short *itemHit);
+pascal Boolean DismissOnEnterFilterProc3(DialogPtr dlg, EventRecord *event, short *itemHit);
 pascal void ButtonFrameProc(DialogRef dlg, DialogItemIndex itemNo);
 static void PaintFullDialogBackground(DialogRef dlg);
+
+static void PStrToCStr(char *dst, ConstStr255Param src, size_t dstSize);
+static void GetStatsFileSpec(FSSpec *spec);
+static void LoadStats(void);
+static void SaveStats(void);
+static Boolean PromptForPlayerName(Str255 outName);
+static void RecordGameResult(Boolean won);
+static void OnStatistics(void);
 
 static void GetTileRect(short row, short col, Rect *outRect);
 static void GetLetterKeyRect(short row, short idx, Rect *outRect);
@@ -362,6 +377,14 @@ static void CStrToPStr(Str255 dst, const char *src)
     memcpy(dst + 1, src, n);
 }
 
+static void PStrToCStr(char *dst, ConstStr255Param src, size_t dstSize)
+{
+    unsigned char n = src[0];
+    if (n > dstSize - 1) n = (unsigned char)(dstSize - 1);
+    memcpy(dst, src + 1, n);
+    dst[n] = '\0';
+}
+
 static void PStrCopy(Str255 dst, ConstStr255Param src)
 {
     memcpy(dst, src, (size_t)src[0] + 1);
@@ -391,6 +414,55 @@ static void BuildLoseMessage(Str255 out)
     PStrCopy(out, "\pOut of guesses! The word was ");
     PStrAppend(out, word);
     PStrAppend(out, "\p.");
+}
+
+/* ---------------------------------------------------------------------- */
+/* Statistics persistence                                                  */
+/*                                                                        */
+/* Stored as a flat dump of WordleStatsBook next to the application --    */
+/* vRefNum 0 / dirID 0 in FSMakeFSSpec means "the default volume/         */
+/* directory", which for a double-clicked app is its own folder. This    */
+/* avoids needing the Folders Manager (FindFolder) for a Preferences     */
+/* folder path, keeping this to plain File Manager calls only.           */
+/* ---------------------------------------------------------------------- */
+
+static void GetStatsFileSpec(FSSpec *spec)
+{
+    Str255 name;
+    CStrToPStr(name, "iWordle Stats");
+    FSMakeFSSpec(0, 0, name, spec);
+}
+
+static void LoadStats(void)
+{
+    FSSpec spec;
+    short refNum;
+    long count;
+
+    WordleStatsInit(&gStats);
+
+    GetStatsFileSpec(&spec);
+    if (FSpOpenDF(&spec, fsRdPerm, &refNum) != noErr) return;
+
+    count = sizeof(gStats);
+    FSRead(refNum, &count, &gStats);
+    FSClose(refNum);
+}
+
+static void SaveStats(void)
+{
+    FSSpec spec;
+    short refNum;
+    long count;
+
+    GetStatsFileSpec(&spec);
+    FSpCreate(&spec, 'WRDL', 'STAT', smSystemScript);
+    if (FSpOpenDF(&spec, fsWrPerm, &refNum) != noErr) return;
+
+    count = sizeof(gStats);
+    FSWrite(refNum, &count, &gStats);
+    SetEOF(refNum, count);
+    FSClose(refNum);
 }
 
 /* ---------------------------------------------------------------------- */
@@ -430,15 +502,34 @@ pascal Boolean DismissOnEnterFilterProc(DialogPtr dlg, EventRecord *event, short
     return false;
 }
 
+/* Same remap as above, for the name-entry and statistics dialogs, whose
+ * default button sits at item 3 instead of item 2 (an EditText or a
+ * second Button comes first). */
+pascal Boolean DismissOnEnterFilterProc3(DialogPtr dlg, EventRecord *event, short *itemHit)
+{
+    (void)dlg;
+
+    if (event->what == keyDown || event->what == autoKey) {
+        char c = (char)(event->message & charCodeMask);
+        if (c == '\r' || c == 3) {
+            *itemHit = 3;
+            return true;
+        }
+    }
+    return false;
+}
+
+/* Every dialog here keeps its default button immediately followed by the
+ * UserItem that rings it, so the ring's own item number minus one always
+ * lands on the button -- this makes the same proc reusable regardless of
+ * how many other items (EditText, other buttons) come before it. */
 pascal void ButtonFrameProc(DialogRef dlg, DialogItemIndex itemNo)
 {
     DialogItemType type;
     Handle itemH;
     Rect box;
 
-    (void)itemNo;
-
-    GetDialogItem(dlg, 2, &type, &itemH, &box);
+    GetDialogItem(dlg, itemNo - 1, &type, &itemH, &box);
 
     SetForeColor(kColorBlack);
     InsetRect(&box, -4, -4);
@@ -641,10 +732,12 @@ static void OnSubmit(void)
                 Str255 msg;
                 BuildWinMessage(msg);
                 ShowMessage(msg);
+                RecordGameResult(true);
             } else if (gGame.status == kGameLost) {
                 Str255 msg;
                 BuildLoseMessage(msg);
                 ShowMessage(msg);
+                RecordGameResult(false);
             }
             break;
 
@@ -669,6 +762,7 @@ static void OnGiveUp(void)
     BuildLoseMessage(msg);
     RedrawAll();
     ShowMessage(msg);
+    RecordGameResult(false);
 }
 
 static void OnAbout(void)
@@ -694,6 +788,206 @@ static void OnAbout(void)
     do {
         ModalDialog(NewModalFilterUPP(&DismissOnEnterFilterProc), &item);
     } while (item != 2);
+
+    DisposeDialog(dlg);
+    RedrawAll();
+}
+
+/* ---------------------------------------------------------------------- */
+/* Player name entry (shown after every win/loss) and the statistics       */
+/* scoreboard (File > Statistics...)                                       */
+/* ---------------------------------------------------------------------- */
+
+pascal void NameEntryContentDrawProc(DialogRef dlg, DialogItemIndex itemNo)
+{
+    DialogItemType type;
+    Handle itemH;
+    Rect box;
+
+    (void)itemNo;
+
+    PaintFullDialogBackground(dlg);
+
+    GetDialogItem(dlg, 1, &type, &itemH, &box);
+    SetForeColor(kColorBlack);
+    PenNormal();
+
+    {
+        Str255 fontName;
+        short charcoalID;
+        CStrToPStr(fontName, "Charcoal");
+        GetFNum(fontName, &charcoalID);
+        TextFont(charcoalID);
+    }
+    TextFace(normal);
+    TextSize(12);
+    DrawCenteredStringAt(box.left + (box.right - box.left) / 2,
+                          box.top + (box.bottom - box.top) / 2 + 4,
+                          "\pWho's playing?");
+}
+
+/* Blocks until OK is hit; outName is empty if the field was left blank
+ * (RecordGameResult treats that as "don't record this result"). */
+static Boolean PromptForPlayerName(Str255 outName)
+{
+    DialogPtr dlg;
+    short item;
+    DialogItemType type;
+    Handle itemH;
+    Rect box;
+
+    dlg = GetNewDialog(202, NULL, (WindowPtr)-1);
+    if (dlg == NULL) { outName[0] = 0; return false; }
+
+    GetDialogItem(dlg, 1, &type, &itemH, &box);
+    SetDialogItem(dlg, 1, type, (Handle)NewUserItemUPP(&NameEntryContentDrawProc), &box);
+
+    GetDialogItem(dlg, 2, &type, &itemH, &box);
+    SetDialogItemText(itemH, gLastPlayerName);
+    SelectDialogItemText(dlg, 2, 0, 32767);
+
+    GetDialogItem(dlg, 4, &type, &itemH, &box);
+    SetDialogItem(dlg, 4, type, (Handle)NewUserItemUPP(&ButtonFrameProc), &box);
+
+    DrawDialog(dlg);
+    DrawControls(dlg);
+
+    do {
+        ModalDialog(NewModalFilterUPP(&DismissOnEnterFilterProc3), &item);
+    } while (item != 3);
+
+    GetDialogItem(dlg, 2, &type, &itemH, &box);
+    GetDialogItemText(itemH, outName);
+
+    DisposeDialog(dlg);
+    RedrawAll();
+
+    return outName[0] > 0;
+}
+
+/* Prompts for a name and records won/lost against it. Skips recording
+ * entirely if the name field was left blank. */
+static void RecordGameResult(Boolean won)
+{
+    Str255 name;
+    char cname[WORDLE_STATS_NAME_LEN + 1];
+
+    if (!PromptForPlayerName(name)) return;
+
+    PStrToCStr(cname, name, sizeof(cname));
+    WordleStatsRecordResult(&gStats, cname, won);
+    PStrCopy(gLastPlayerName, name);
+    SaveStats();
+}
+
+pascal void StatsContentDrawProc(DialogRef dlg, DialogItemIndex itemNo)
+{
+    DialogItemType type;
+    Handle itemH;
+    Rect box;
+    unsigned short i;
+    short rowY;
+    Str255 s;
+
+    (void)itemNo;
+
+    PaintFullDialogBackground(dlg);
+
+    GetDialogItem(dlg, 1, &type, &itemH, &box);
+    SetForeColor(kColorBlack);
+    PenNormal();
+
+    TextFont(kFontGeneva);
+    TextFace(bold);
+    TextSize(12);
+    MoveTo(box.left + 16, box.top + 20);
+    DrawString("\pName");
+    MoveTo(box.left + 220, box.top + 20);
+    DrawString("\pPlayed");
+    MoveTo(box.left + 280, box.top + 20);
+    DrawString("\pWin %");
+    MoveTo(box.left + 335, box.top + 20);
+    DrawString("\pCur");
+    MoveTo(box.left + 380, box.top + 20);
+    DrawString("\pMax");
+
+    MoveTo(box.left + 10, box.top + 26);
+    LineTo(box.right - 10, box.top + 26);
+
+    TextFace(normal);
+    TextSize(11);
+
+    if (gStats.playerCount == 0) {
+        MoveTo(box.left + 16, box.top + 50);
+        DrawString("\pNo players yet -- win or lose a game to get started.");
+        return;
+    }
+
+    rowY = box.top + 44;
+    for (i = 0; i < gStats.playerCount; i++) {
+        WordlePlayerStats *p = &gStats.players[i];
+        short winPct = p->gamesPlayed
+            ? (short)(((long)p->gamesWon * 100L) / p->gamesPlayed)
+            : 0;
+
+        CStrToPStr(s, p->name);
+        MoveTo(box.left + 16, rowY);
+        DrawString(s);
+
+        NumToString((long)p->gamesPlayed, s);
+        MoveTo(box.left + 220, rowY);
+        DrawString(s);
+
+        NumToString((long)winPct, s);
+        MoveTo(box.left + 280, rowY);
+        DrawString(s);
+
+        NumToString((long)p->currentStreak, s);
+        MoveTo(box.left + 335, rowY);
+        DrawString(s);
+
+        NumToString((long)p->maxStreak, s);
+        MoveTo(box.left + 380, rowY);
+        DrawString(s);
+
+        rowY += 18;
+    }
+}
+
+static void OnStatistics(void)
+{
+    DialogPtr dlg;
+    short item;
+    DialogItemType type;
+    Handle itemH;
+    Rect box;
+
+    dlg = GetNewDialog(203, NULL, (WindowPtr)-1);
+    if (dlg == NULL) return;
+
+    GetDialogItem(dlg, 1, &type, &itemH, &box);
+    SetDialogItem(dlg, 1, type, (Handle)NewUserItemUPP(&StatsContentDrawProc), &box);
+
+    GetDialogItem(dlg, 4, &type, &itemH, &box);
+    SetDialogItem(dlg, 4, type, (Handle)NewUserItemUPP(&ButtonFrameProc), &box);
+
+    DrawDialog(dlg);
+    DrawControls(dlg);
+
+    do {
+        ModalDialog(NewModalFilterUPP(&DismissOnEnterFilterProc3), &item);
+        if (item == 2) {
+            /* Force the redraw ourselves rather than invalidating and
+             * waiting for the next update event -- DrawDialog() repaints
+             * item 1's background but never a native control's content,
+             * so an update-driven repaint here would blank the buttons
+             * until clicked, same bug the initial reveal had. */
+            WordleStatsClear(&gStats);
+            SaveStats();
+            DrawDialog(dlg);
+            DrawControls(dlg);
+        }
+    } while (item != 3);
 
     DisposeDialog(dlg);
     RedrawAll();
@@ -740,7 +1034,8 @@ static void HandleMenuCommand(long menuResult)
         case kMenuFile:
             if (menuItem == 1) OnNewGame();
             else if (menuItem == 2) OnGiveUp();
-            else if (menuItem == 4) gDone = true;
+            else if (menuItem == 3) OnStatistics();
+            else if (menuItem == 5) gDone = true;
             break;
 
         default:
@@ -908,6 +1203,8 @@ int main(void)
 
     gWindow = GetNewCWindow(128, NULL, (WindowPtr)-1);
     ShowWindow(gWindow);
+
+    LoadStats();
 
     WordleSeedRandom((unsigned long)TickCount());
     WordleNewGame(&gGame);

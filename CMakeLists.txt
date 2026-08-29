@@ -6,6 +6,7 @@ set(PLATFORM_MACOS9_DIR ${CMAKE_SOURCE_DIR}/src/platform/macos9)
 
 add_application(iWordle
     ${CORE_DIR}/wordle_engine.c
+    ${CORE_DIR}/wordle_stats.c
     ${PLATFORM_MACOS9_DIR}/main.c
     ${PLATFORM_MACOS9_DIR}/iWordle.r
     ${PLATFORM_MACOS9_DIR}/icons.r
