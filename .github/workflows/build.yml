@@ -31,18 +31,23 @@ jobs:
         run: |
           set -euo pipefail
 
+          # build/ is owned by root (created inside the Retro68 container),
+          # so this host-side step can read from it but not write new
+          # files into it -- everything created here goes to package/
+          # instead, which this step owns.
+          mkdir -p package
+
           # sit reads AppleDouble sidecars named "._name" on Linux; Rez
           # already wrote the resource-fork half as "%iWordle.ad" (its
           # own AppleDouble naming convention) and the plain data fork as
           # "iWordle.ad" -- just rename both into place.
           git clone --depth 1 https://github.com/thecloudexpanse/sit.git /tmp/sit-src
           make -C /tmp/sit-src
-          mkdir -p package
           cp build/iWordle.ad package/iWordle
           cp "build/%iWordle.ad" package/._iWordle
-          /tmp/sit-src/sit -T APPL -C WRDL -o build/iWordle.sit package/iWordle
+          /tmp/sit-src/sit -T APPL -C WRDL -o package/iWordle.sit package/iWordle
 
-          python3 tools/make_diskcopy42.py build/iWordle.dsk build/iWordle-DiskCopy42.dsk iWordle
+          python3 tools/make_diskcopy42.py build/iWordle.dsk package/iWordle-DiskCopy42.dsk iWordle
 
       - name: Upload disk image + app bundle
         uses: actions/upload-artifact@v4
@@ -50,8 +55,8 @@ jobs:
           name: iWordle-mac-os-9-ppc
           path: |
             build/iWordle.dsk
-            build/iWordle-DiskCopy42.dsk
+            package/iWordle-DiskCopy42.dsk
             build/iWordle.APPL
             build/iWordle.bin
-            build/iWordle.sit
+            package/iWordle.sit
           if-no-files-found: error
