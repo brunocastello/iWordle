@@ -158,6 +158,7 @@ static void OnAbout(void);
 
 static void HandleContentClick(Point local);
 static void HandleMenuCommand(long menuResult);
+static void UpdateFileMenuState(void);
 static void HandleMouseDown(EventRecord *event);
 static void HandleKeyDown(EventRecord *event);
 static void HandleUpdate(EventRecord *event);
@@ -805,6 +806,7 @@ static void OnSubmit(void)
                 ShowMessage(msg);
                 RecordGameResult(false);
             }
+            UpdateFileMenuState();
             break;
 
         default:
@@ -816,6 +818,7 @@ static void OnNewGame(void)
 {
     WordleNewGame(&gGame);
     RedrawAll();
+    UpdateFileMenuState();
 }
 
 static void OnGiveUp(void)
@@ -829,6 +832,7 @@ static void OnGiveUp(void)
     RedrawAll();
     ShowMessage(msg);
     RecordGameResult(false);
+    UpdateFileMenuState();
 }
 
 static void OnAbout(void)
@@ -1182,6 +1186,27 @@ static void HandleContentClick(Point local)
     }
 }
 
+/* "End Game" (File item 2) only makes sense while a game is actually in
+ * progress. DisableItem/EnableItem -- the classic pair -- aren't
+ * available under Carbon at all (confirmed in the real Menus.h: wrapped
+ * in #if CALL_NOT_IN_CARBON, explicitly "CarbonLib: not available"),
+ * so this uses EnableMenuItem/DisableMenuItem instead, the Carbon-era
+ * replacement (available since Mac OS 8.5). Called after every game
+ * state change rather than lazily before each menu interaction, so
+ * MenuKey() (Cmd-W) sees the correct enabled state too, not just clicks
+ * through the menu bar. */
+static void UpdateFileMenuState(void)
+{
+    MenuHandle fileMenu = GetMenuHandle(kMenuFile);
+    if (fileMenu == NULL) return;
+
+    if (gGame.status == kGameInProgress) {
+        EnableMenuItem(fileMenu, 2);
+    } else {
+        DisableMenuItem(fileMenu, 2);
+    }
+}
+
 static void HandleMenuCommand(long menuResult)
 {
     short menuID = (short)(menuResult >> 16);
@@ -1371,6 +1396,7 @@ int main(void)
 
     WordleSeedRandom((unsigned long)TickCount());
     WordleNewGame(&gGame);
+    UpdateFileMenuState();
 
     RedrawAll();
     RunEventLoop();

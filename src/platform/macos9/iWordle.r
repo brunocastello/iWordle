@@ -63,8 +63,8 @@ resource 'MENU' (128, "File") {
     "File",
     {
         "New Game", noIcon, "N", noMark, plain;
-        "End Game", noIcon, noKey, noMark, plain;
-        "Ranking...", noIcon, noKey, noMark, plain;
+        "End Game", noIcon, "W", noMark, plain;
+        "Ranking...", noIcon, "R", noMark, plain;
         "-", noIcon, noKey, noMark, plain;
         "Quit", noIcon, "Q", noMark, plain;
     }
