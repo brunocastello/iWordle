@@ -104,14 +104,7 @@ static Boolean gDone = false;
 static WordleStatsBook gStats;
 static Str255 gLastPlayerName = { 0 };
 static ControlHandle gNameFieldControl = NULL;
-
-/* Temporary on-screen diagnostics for the name-field keyboard-input bug
- * -- remove once that's confirmed fixed. 1 is a sentinel meaning "not
- * called yet" (not a real OSErr value in normal use here). */
-static OSErr gDebugFocusErr = 1;
-static short gDebugLastPart = -999;
-static short gDebugKeyCount = 0;
-static OSErr gDebugRootErr = 1;
+static ControlHandle gNameOKControl = NULL;
 
 /* ---------------------------------------------------------------------- */
 /* Forward declarations                                                   */
@@ -119,13 +112,13 @@ static OSErr gDebugRootErr = 1;
 
 pascal void MessageContentDrawProc(DialogRef dlg, DialogItemIndex itemNo);
 pascal void AboutContentDrawProc(DialogRef dlg, DialogItemIndex itemNo);
-pascal void NameEntryContentDrawProc(DialogRef dlg, DialogItemIndex itemNo);
 pascal void StatsContentDrawProc(DialogRef dlg, DialogItemIndex itemNo);
 pascal Boolean DismissOnEnterFilterProc(DialogPtr dlg, EventRecord *event, short *itemHit);
 pascal Boolean DismissOnEnterFilterProc3(DialogPtr dlg, EventRecord *event, short *itemHit);
-pascal Boolean NameEntryFilterProc(DialogPtr dlg, EventRecord *event, short *itemHit);
 pascal void ButtonFrameProc(DialogRef dlg, DialogItemIndex itemNo);
 static void PaintFullDialogBackground(DialogRef dlg);
+
+static void DrawNameWindowContent(WindowPtr w);
 
 static void PStrToCStr(char *dst, ConstStr255Param src, size_t dstSize);
 static Boolean GetStatsFileSpec(FSSpec *spec);
@@ -592,74 +585,6 @@ pascal Boolean DismissOnEnterFilterProc3(DialogPtr dlg, EventRecord *event, shor
     return false;
 }
 
-/* Modal filter for the name-entry dialog, whose field is a real
- * Appearance Manager Edit Text control (gNameFieldControl, kControlEditTextProc)
- * rather than a DITL editText item -- ModalDialog only knows how to route
- * keystrokes and clicks to DITL items, so this proc forwards both to the
- * control by hand: HandleControlKey feeds it every non-Return keystroke,
- * and FindControl/TrackControl handle click-to-position and drag-select
- * the same way the control's own CDEF would if ModalDialog knew about it.
- *
- * It also takes over updateEvt for this dialog specifically: ModalDialog's
- * own automatic update handling calls DrawDialog() but never DrawControls(),
- * so any update event delivered after the initial reveal (there's usually
- * one queued almost immediately for a freshly-shown window) would repaint
- * the gray background over the field and never bring it back -- exactly
- * what "the field flashes and disappears" looks like. Pairing them here
- * guarantees a DrawControls() always follows a DrawDialog() for this
- * window, no matter what triggered the update. */
-pascal Boolean NameEntryFilterProc(DialogPtr dlg, EventRecord *event, short *itemHit)
-{
-    if (event->what == updateEvt && (DialogPtr)event->message == dlg) {
-        BeginUpdate((WindowPtr)dlg);
-        DrawDialog(dlg);
-        DrawControls((WindowPtr)dlg);
-        EndUpdate((WindowPtr)dlg);
-        *itemHit = 0;
-        return true;
-    }
-
-    if (event->what == keyDown || event->what == autoKey) {
-        char c = (char)(event->message & charCodeMask);
-        if (c == '\r' || c == 3) {
-            *itemHit = 3;
-            return true;
-        }
-        if (gNameFieldControl != NULL) {
-            short keyCode = (short)((event->message & keyCodeMask) >> 8);
-            /* HandleControlKey draws into the current port as it inserts
-             * the character, so the port has to be the dialog's own --
-             * ModalDialog doesn't guarantee that's already the case when
-             * it hands us a keyDown. */
-            SetPortWindowPort((WindowPtr)dlg);
-            gDebugLastPart = HandleControlKey(gNameFieldControl, keyCode, c, event->modifiers);
-            gDebugKeyCount++;
-            NameEntryContentDrawProc(dlg, 1);
-        }
-        *itemHit = 0;
-        return true;
-    }
-
-    if (event->what == mouseDown && gNameFieldControl != NULL) {
-        WindowPtr w = (WindowPtr)dlg;
-        Point local = event->where;
-        ControlHandle hitControl = NULL;
-
-        SetPortWindowPort(w);
-        GlobalToLocal(&local);
-        FindControl(local, w, &hitControl);
-
-        if (hitControl == gNameFieldControl) {
-            SetKeyboardFocus(w, gNameFieldControl, kControlFocusNextPart);
-            TrackControl(gNameFieldControl, local, NULL);
-            *itemHit = 0;
-            return true;
-        }
-    }
-
-    return false;
-}
-
 /* Every dialog here keeps its default button immediately followed by the
  * UserItem that rings it, so the ring's own item number minus one always
  * lands on the button -- this makes the same proc reusable regardless of
@@ -939,24 +864,26 @@ static void OnAbout(void)
 /* scoreboard (File > Statistics...)                                       */
 /* ---------------------------------------------------------------------- */
 
-pascal void NameEntryContentDrawProc(DialogRef dlg, DialogItemIndex itemNo)
+/* This prompt is a plain window with its own tiny event loop, not a
+ * ModalDialog -- every bug hit getting a real native Edit Text control
+ * to accept keystrokes traced back to some ModalDialog behavior we don't
+ * control (auto update handling that skips DrawControls, no guaranteed
+ * port before handing us a keyDown, etc.). The main game window already
+ * runs a plain WaitNextEvent loop with real native controls with none of
+ * that friction, so this reuses that same architecture instead of
+ * continuing to fight ModalDialog for a case it wasn't built for. */
+static void DrawNameWindowContent(WindowPtr w)
 {
-    DialogItemType type;
-    Handle itemH;
-    Rect box;
+    Rect windowRect;
 
-    (void)itemNo;
+    SetPortWindowPort(w);
+    GetPortBounds(GetWindowPort(w), &windowRect);
+    SetBackColor(kColorWindowBG);
+    SetForeColor(kColorWindowBG);
+    PaintRect(&windowRect);
 
-    /* A real Appearance control draws its own complete bounds (sunken
-     * bezel and all) when DrawControls() reaches it, unlike a classic
-     * DITL editText item -- no need to protect its rect from the gray
-     * fill the way the old approach had to. */
-    PaintFullDialogBackground(dlg);
-
-    GetDialogItem(dlg, 1, &type, &itemH, &box);
     SetForeColor(kColorBlack);
     PenNormal();
-
     {
         Str255 fontName;
         short charcoalID;
@@ -966,33 +893,16 @@ pascal void NameEntryContentDrawProc(DialogRef dlg, DialogItemIndex itemNo)
     }
     TextFace(normal);
     TextSize(12);
-    DrawCenteredStringAt(box.left + (box.right - box.left) / 2,
-                          box.top + (box.bottom - box.top) / 2 + 4,
-                          "\pWho's playing?");
+    DrawCenteredStringAt((windowRect.right - windowRect.left) / 2, 34, "\pWho's playing?");
 
-    /* Temporary diagnostic line -- see gDebugFocusErr et al. */
-    {
-        Str255 dbg;
-        Str255 numStr;
-
-        CStrToPStr(dbg, "RC=");
-        NumToString((long)gDebugRootErr, numStr);
-        PStrAppend(dbg, numStr);
-        PStrAppend(dbg, "\p SKF=");
-        NumToString((long)gDebugFocusErr, numStr);
-        PStrAppend(dbg, numStr);
-        PStrAppend(dbg, "\p HCK=");
-        NumToString((long)gDebugLastPart, numStr);
-        PStrAppend(dbg, numStr);
-        PStrAppend(dbg, "\p n=");
-        NumToString((long)gDebugKeyCount, numStr);
-        PStrAppend(dbg, numStr);
-
-        TextFont(kFontGeneva);
-        TextFace(normal);
-        TextSize(9);
-        DrawCenteredStringAt(box.left + (box.right - box.left) / 2,
-                              box.bottom - 4, dbg);
+    if (gNameOKControl != NULL) {
+        Rect box;
+        GetControlBounds(gNameOKControl, &box);
+        SetForeColor(kColorBlack);
+        InsetRect(&box, -4, -4);
+        PenSize(3, 3);
+        FrameRoundRect(&box, 16, 16);
+        PenNormal();
     }
 }
 
@@ -1000,65 +910,103 @@ pascal void NameEntryContentDrawProc(DialogRef dlg, DialogItemIndex itemNo)
  * (RecordGameResult treats that as "don't record this result"). */
 static Boolean PromptForPlayerName(Str255 outName)
 {
-    DialogPtr dlg;
-    short item;
-    DialogItemType type;
-    Handle itemH;
-    Rect box, fieldBox;
+    WindowPtr w;
+    Rect fieldRect, okRect;
+    ControlRef rootControl;
+    Boolean done = false;
+    EventRecord event;
 
-    dlg = GetNewDialog(202, NULL, (WindowPtr)-1);
-    if (dlg == NULL) { outName[0] = 0; return false; }
+    w = GetNewCWindow(202, NULL, (WindowPtr)-1);
+    if (w == NULL) { outName[0] = 0; return false; }
 
-    /* Unconditionally calling CreateRootControl made the OK button and
-     * the field both vanish -- that only makes sense if GetNewDialog
-     * already gave this window a root control, and forcibly recreating
-     * one corrupted the existing DITL control hierarchy. Check first via
-     * GetRootControl, and only create one if that genuinely fails. */
-    {
-        ControlRef rootControl;
-        gDebugRootErr = GetRootControl((WindowPtr)dlg, &rootControl);
-        if (gDebugRootErr != noErr) {
-            gDebugRootErr = CreateRootControl((WindowPtr)dlg, &rootControl);
-        }
+    if (GetRootControl(w, &rootControl) != noErr) {
+        CreateRootControl(w, &rootControl);
     }
 
-    GetDialogItem(dlg, 1, &type, &itemH, &box);
-    SetDialogItem(dlg, 1, type, (Handle)NewUserItemUPP(&NameEntryContentDrawProc), &box);
+    SetRect(&fieldRect, 60, 67, 260, 85);
+    gNameFieldControl = NewControl(w, &fieldRect, "\p", true, 0, 0, 0, kControlEditTextProc, 0L);
 
-    /* Item 2 is a plain UserItem placeholder reserving layout space --
-     * the real field is a genuine Appearance Manager Edit Text control
-     * (kControlEditTextProc), created here since that's what actually
-     * renders the sunken box + blue focus ring real Mac OS 9.2 uses. */
-    GetDialogItem(dlg, 2, &type, &itemH, &fieldBox);
-    gNameFieldControl = NewControl((WindowPtr)dlg, &fieldBox, "\p", true,
-                                    0, 0, 0, kControlEditTextProc, 0L);
+    SetRect(&okRect, 125, 118, 195, 142);
+    gNameOKControl = NewControl(w, &okRect, "\pOK", true, 0, 0, 0, kControlPushButtonProc, 0L);
 
-    GetDialogItem(dlg, 4, &type, &itemH, &box);
-    SetDialogItem(dlg, 4, type, (Handle)NewUserItemUPP(&ButtonFrameProc), &box);
+    if (gNameFieldControl != NULL && gLastPlayerName[0] > 0) {
+        SetControlData(gNameFieldControl, kControlEditTextPart, kControlEditTextTextTag,
+                        gLastPlayerName[0], (Ptr)(gLastPlayerName + 1));
+    }
 
-    DrawDialog(dlg);
-    DrawControls((WindowPtr)dlg);
+    ShowWindow(w);
+    SelectWindow(w);
 
-    /* Prefill and focus only after the dialog is fully drawn once --
-     * doing this beforehand meant the background repaint in DrawDialog()
-     * happened right after the control's very first (focused) draw,
-     * which is what made the field flash and then never come back. */
-    gDebugFocusErr = 1;
-    gDebugLastPart = -999;
-    gDebugKeyCount = 0;
     if (gNameFieldControl != NULL) {
-        if (gLastPlayerName[0] > 0) {
-            SetControlData(gNameFieldControl, kControlEditTextPart, kControlEditTextTextTag,
-                            gLastPlayerName[0], (Ptr)(gLastPlayerName + 1));
-        }
-        gDebugFocusErr = SetKeyboardFocus((WindowPtr)dlg, gNameFieldControl, kControlFocusNextPart);
-        NameEntryContentDrawProc(dlg, 1);
+        SetKeyboardFocus(w, gNameFieldControl, kControlFocusNextPart);
     }
 
-    item = 0;
     do {
-        ModalDialog(NewModalFilterUPP(&NameEntryFilterProc), &item);
-    } while (item != 3);
+        WaitNextEvent(everyEvent, &event, 15, NULL);
+
+        switch (event.what) {
+            case updateEvt:
+                if ((WindowPtr)event.message == w) {
+                    BeginUpdate(w);
+                    DrawNameWindowContent(w);
+                    DrawControls(w);
+                    EndUpdate(w);
+                }
+                break;
+
+            case keyDown:
+            case autoKey: {
+                char c = (char)(event.message & charCodeMask);
+                if (c == '\r' || c == 3) {
+                    done = true;
+                } else if (gNameFieldControl != NULL) {
+                    short keyCode = (short)((event.message & keyCodeMask) >> 8);
+                    SetPortWindowPort(w);
+                    HandleControlKey(gNameFieldControl, keyCode, c, event.modifiers);
+                }
+                break;
+            }
+
+            case mouseDown: {
+                WindowPtr whichWindow;
+                short part = FindWindow(event.where, &whichWindow);
+
+                if (whichWindow != w) {
+                    if (part == inMenuBar) {
+                        /* Keep this window on top of the game's menu the
+                         * same way a modal dialog would -- ignore menu
+                         * clicks while it's up. */
+                        HiliteMenu(0);
+                    } else {
+                        SelectWindow(w);
+                    }
+                    break;
+                }
+
+                if (part == inContent) {
+                    Point local = event.where;
+                    ControlHandle hitControl = NULL;
+
+                    SetPortWindowPort(w);
+                    GlobalToLocal(&local);
+                    FindControl(local, w, &hitControl);
+
+                    if (hitControl == gNameFieldControl) {
+                        SetKeyboardFocus(w, gNameFieldControl, kControlFocusNextPart);
+                        TrackControl(gNameFieldControl, local, NULL);
+                    } else if (hitControl == gNameOKControl) {
+                        if (TrackControl(gNameOKControl, local, NULL) != 0) {
+                            done = true;
+                        }
+                    }
+                }
+                break;
+            }
+
+            default:
+                break;
+        }
+    } while (!done);
 
     outName[0] = 0;
     if (gNameFieldControl != NULL) {
@@ -1072,8 +1020,9 @@ static Boolean PromptForPlayerName(Str255 outName)
         }
     }
     gNameFieldControl = NULL;
+    gNameOKControl = NULL;
 
-    DisposeDialog(dlg);
+    DisposeWindow(w);
     RedrawAll();
 
     return outName[0] > 0;

@@ -1,22 +1,33 @@
 /*
  * Resource definitions for iWordle: menu bar, main document window, a
  * message dialog (New Game confirm, Give Up, Win / Lose), an About
- * dialog, a player-name prompt (202), and a statistics scoreboard (203).
+ * dialog, and a statistics scoreboard (203).
  *
- * All of these are DLOG/DITL dialogs where item 1 is a UserItem that
- * paints the Platinum gray background (Retro68's headers don't expose
- * the Appearance Manager, so there's no SetThemeWindowBackground to ask
- * for it) and draws that dialog's text/table content by hand, and the
- * dialog's default button is a real native Button immediately followed
- * by a UserItem that draws the classic bold rounded frame marking it as
- * the default -- the standard technique that distinguishes an OK button
- * from a plain Cancel/Clear button in a native alert. SetDialogDefaultItem()
+ * Those are DLOG/DITL dialogs where item 1 is a UserItem that paints the
+ * Platinum gray background (Retro68's default open-source Multiversal
+ * Interfaces don't expose the Appearance Manager, so there's no
+ * SetThemeWindowBackground to ask for it -- this project now links
+ * against Apple's real Universal Interfaces instead, see
+ * third_party/InterfacesAndLibraries, but these dialogs were built before
+ * that and never revisited since the plain gray fill already works fine)
+ * and draws that dialog's text/table content by hand, and the dialog's
+ * default button is a real native Button immediately followed by a
+ * UserItem that draws the classic bold rounded frame marking it as the
+ * default -- the standard technique that distinguishes an OK button from
+ * a plain Cancel/Clear button in a native alert. SetDialogDefaultItem()
  * was tried as a way to get that emphasis for free from the Dialog Manager
  * instead, but rendered far worse (the button barely appeared at all) than
  * this hand-drawn frame does, so this is the version we're keeping. The
  * frame's UserItem proc reads the button's box off "itemNo - 1" (the item
- * right before it), which is why every dialog here keeps its default
- * button immediately followed by its ring UserItem in the item list.
+ * right before it), which is why every DLOG/DITL dialog here keeps its
+ * default button immediately followed by its ring UserItem in the item
+ * list.
+ *
+ * The player-name prompt (202) is NOT one of these -- it's a plain WIND
+ * with no DITL at all, since it needed real native Control Manager
+ * controls (an Edit Text field) that ModalDialog doesn't cooperate with
+ * well. See the comment on WIND (202) below and on PromptForPlayerName
+ * in main.c for why.
  */
 
 #include "Types.r"
@@ -121,45 +132,30 @@ resource 'DITL' (201) {
     }
 };
 
-/* ---- Player name entry (DLOG 202 + DITL 202) ----
-   Shown after every win/loss to attribute the result to a player. Item 1
-   is the usual background+label UserItem; item 2 is a plain UserItem
-   that only reserves layout space -- the actual field is a real
-   Appearance Manager Edit Text control (kControlEditTextProc) created at
-   runtime in PromptForPlayerName (main.c), which is what renders the
-   sunken box + blue focus ring real Mac OS 9.2 uses. That requires the
-   real Control Manager (kControlEditTextProc, Get/SetControlData,
-   HandleControlKey, SetKeyboardFocus), which this project's Retro68
-   toolchain now links against Apple's real Universal Interfaces for
-   (see third_party/InterfacesAndLibraries and .github/workflows/build.yml)
-   instead of the open-source Multiversal reimplementation, which never
-   had any of it. Item 3 is the OK button; item 4 is the ButtonFrameProc
-   ring around it, same as every other dialog here. */
-resource 'DLOG' (202, "Who's Playing?") {
+/* ---- Player name entry (WIND 202) ----
+   Shown after every win/loss to attribute the result to a player. This
+   is a plain window, not a DLOG/DITL -- every bug hit getting a real
+   native Edit Text control to accept keystrokes traced back to some
+   ModalDialog behavior working against a control it doesn't know about
+   (auto update handling that skips DrawControls, no guaranteed port
+   before a keyDown, etc.). PromptForPlayerName (main.c) creates its own
+   Edit Text (kControlEditTextProc) and OK (kControlPushButtonProc)
+   controls at runtime and runs its own small WaitNextEvent loop, the
+   same architecture the main game window already uses successfully.
+   Both control types need the real Control Manager, which this
+   project's Retro68 toolchain now links against Apple's real Universal
+   Interfaces for (see third_party/InterfacesAndLibraries and
+   .github/workflows/build.yml) instead of the open-source Multiversal
+   reimplementation, which never had any of it. Starts invisible;
+   PromptForPlayerName shows it only once its controls are fully set up. */
+resource 'WIND' (202, "Who's Playing?") {
     { 0, 0, 160, 320 },
     dBoxProc,
-    visible,
+    invisible,
     noGoAway,
     0,
-    202,
     "",
     centerMainScreen
-};
-
-resource 'DITL' (202) {
-    {
-        { 0, 0, 60, 320 },
-        UserItem { enabled };
-
-        { 67, 60, 85, 260 },
-        UserItem { enabled };
-
-        { 118, 125, 142, 195 },
-        Button { enabled, "OK" };
-
-        { 114, 121, 146, 199 },
-        UserItem { disabled };
-    }
 };
 
 /* ---- Statistics scoreboard (DLOG 203 + DITL 203) ----
