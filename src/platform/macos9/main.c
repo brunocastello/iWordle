@@ -187,12 +187,21 @@ static void SetForeColor(RGBColor color)
     RGBForeColor(&color);
 }
 
-/* Carbon's Appearance Manager doesn't pick up RGBBackColor for these
- * classic dialogs, so the only reliable way to get a Platinum gray
- * background (instead of the Dialog Manager's default white) is to
- * paint it ourselves, every time the dialog redraws. bgItem must be a
- * UserItem covering the whole dialog and drawn before any item that
- * should appear on top of it (i.e. it should be item 1). */
+static void SetBackColor(RGBColor color)
+{
+    RGBBackColor(&color);
+}
+
+/* Carbon's Appearance Manager doesn't repaint the whole classic dialog
+ * to our Platinum gray on its own, so we paint it ourselves every
+ * redraw. bgItem must be a UserItem drawn before any item that should
+ * appear on top of it (item 1), and its rect must NOT overlap any
+ * other item: DITL hit-testing matches items in index order, so an
+ * overlapping background item would swallow clicks meant for whatever
+ * sits underneath it. We also set BackColor (not just PaintRect with
+ * ForeColor), since native controls like the OK button erase their own
+ * rounded corners using the port's BackColor -- leaving it at the
+ * default white is what caused white corner pixels around the button. */
 static void PaintDialogBackground(DialogRef dlg, DialogItemIndex bgItem)
 {
     DialogItemType type;
@@ -200,6 +209,7 @@ static void PaintDialogBackground(DialogRef dlg, DialogItemIndex bgItem)
     Rect box;
 
     GetDialogItem(dlg, bgItem, &type, &itemH, &box);
+    SetBackColor(kColorWindowBG);
     SetForeColor(kColorWindowBG);
     PaintRect(&box);
 }
@@ -468,6 +478,7 @@ pascal void AboutDrawProc(DialogRef dlg, DialogItemIndex itemNo)
     GetDialogItem(dlg, 1, &type, &itemH, &box);
     midX = box.left + (box.right - box.left) / 2;
 
+    SetBackColor(kColorWindowBG);
     SetForeColor(kColorWindowBG);
     PaintRect(&box);
     SetForeColor(kColorBlack);
@@ -476,7 +487,10 @@ pascal void AboutDrawProc(DialogRef dlg, DialogItemIndex itemNo)
     SetRect(&iconRect, midX - 16, box.top + 6, midX + 16, box.top + 38);
     PlotIconID(&iconRect, atNone, ttNone, 128);
 
-    TextFont(kFontGeneva);
+    /* Classic About-box convention: the app name is set in the bold
+     * System font (the OS's own UI face), while body/credit lines use
+     * Geneva -- two distinct typefaces, not just two sizes of one. */
+    TextFont(systemFont);
     TextFace(bold);
     TextSize(14);
     CStrToPStr(s, "iWordle 1.0");
@@ -484,8 +498,9 @@ pascal void AboutDrawProc(DialogRef dlg, DialogItemIndex itemNo)
     MoveTo(midX - w / 2, box.top + 54);
     DrawString(s);
 
-    /* Everything below the title is the same size; only bold/plain
-     * varies, matching the reference layout's visual hierarchy. */
+    /* Everything below the title is Geneva at one consistent size;
+     * only bold/plain varies, matching the reference layout. */
+    TextFont(kFontGeneva);
     TextSize(9);
 
     TextFace(normal);

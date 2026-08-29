@@ -60,10 +60,11 @@ resource 'WIND' (128, "iWordle") {
 /* ---------------------------------------------------------------------- */
 /* Small message dialog (New Game confirm, Give Up, Win / Lose)           */
 /*                                                                        */
-/* Item 1 is a UserItem covering the whole dialog that paints our own     */
-/* Platinum gray background on every redraw (Carbon's Appearance         */
-/* Manager doesn't pick up RGBBackColor for these classic dialogs), so    */
-/* it must be drawn before the button/text items that sit on top of it.   */
+/* Item 1 is a UserItem that paints our own Platinum gray background on   */
+/* every redraw (Carbon's Appearance Manager doesn't do this for these    */
+/* classic dialogs). Its rect must NOT overlap the button: DITL hit-      */
+/* testing matches items in index order, and an overlapping background   */
+/* item would swallow clicks meant for the button underneath it.          */
 /* ---------------------------------------------------------------------- */
 
 resource 'DLOG' (200, "Message") {
@@ -79,7 +80,7 @@ resource 'DLOG' (200, "Message") {
 
 resource 'DITL' (200) {
     {
-        { 0, 0, 120, 300 },
+        { 0, 0, 76, 300 },
         UserItem { enabled };
 
         { 80, 214, 104, 284 },
@@ -107,7 +108,7 @@ resource 'DLOG' (201, "About iWordle") {
 
 resource 'DITL' (201) {
     {
-        { 0, 0, 245, 280 },
+        { 0, 0, 200, 280 },
         UserItem { enabled };
 
         { 210, 110, 234, 170 },
