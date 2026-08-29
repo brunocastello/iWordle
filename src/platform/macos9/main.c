@@ -43,18 +43,24 @@ enum {
 /* Board / keyboard layout                                                */
 /* ---------------------------------------------------------------------- */
 
+/* Window content is sized to fit this layout with a MARGIN-wide border
+ * on every side and nothing more; the widest row (10-key QWERTY row)
+ * sets the overall content width, and everything else is centered
+ * within it. Recompute WIND's bounds in iWordle.r if any of this moves. */
+#define MARGIN 14
+
 #define TILE_SIZE      54
 #define TILE_GAP       8
-#define BOARD_TOP      20
-#define BOARD_LEFT     179
+#define BOARD_TOP      MARGIN
+#define BOARD_LEFT     100
 
 #define KEY_SIZE          42
 #define KEY_GAP           6
 #define KEY_ROW_GAP       10
-#define KEYBOARD_TOP      424
-#define KB_ROW0_LEFT      93
-#define KB_ROW1_LEFT      117
-#define KB_ROW2_LEFT      112
+#define KEYBOARD_TOP      398
+#define KB_ROW0_LEFT      MARGIN
+#define KB_ROW1_LEFT      38
+#define KB_ROW2_LEFT      33
 #define KB_BACKSPACE_WIDTH 100
 #define KB_ROW_COUNT      3
 
@@ -92,7 +98,8 @@ static Boolean gDone = false;
 /* Forward declarations                                                   */
 /* ---------------------------------------------------------------------- */
 
-pascal void ButtonFrameProc(DialogRef dlg, DialogItemIndex itemNo);
+pascal void AboutDrawProc(DialogRef dlg, DialogItemIndex itemNo);
+pascal Boolean AboutFilterProc(DialogPtr dlg, EventRecord *event, short *itemHit);
 
 static void GetTileRect(short row, short col, Rect *outRect);
 static void GetLetterKeyRect(short row, short idx, Rect *outRect);
@@ -365,38 +372,20 @@ static void BuildLoseMessage(Str255 out)
 
 /* ---------------------------------------------------------------------- */
 /* Message dialog                                                          */
+/*                                                                        */
+/* Plain Button + StaticText DITL items, left entirely to Mac OS 9's      */
+/* Appearance Manager to render with the standard Platinum look.          */
 /* ---------------------------------------------------------------------- */
-
-pascal void ButtonFrameProc(DialogRef dlg, DialogItemIndex itemNo)
-{
-    DialogItemType type;
-    Handle itemH;
-    Rect box;
-
-    (void)itemNo;
-
-    GetDialogItem(dlg, 1, &type, &itemH, &box);
-    InsetRect(&box, -4, -4);
-    PenSize(3, 3);
-    FrameRoundRect(&box, 16, 16);
-    PenNormal();
-}
 
 static void ShowMessage(ConstStr255Param msg)
 {
     DialogPtr dlg;
     short item;
-    DialogItemType type;
-    Handle itemH;
-    Rect box;
 
     ParamText(msg, "\p", "\p", "\p");
 
     dlg = GetNewDialog(200, NULL, (WindowPtr)-1);
     if (dlg == NULL) return;
-
-    GetDialogItem(dlg, 2, &type, &itemH, &box);
-    SetDialogItem(dlg, 2, type, (Handle)NewUserItemUPP(&ButtonFrameProc), &box);
 
     do {
         ModalDialog(NULL, &item);
@@ -404,6 +393,75 @@ static void ShowMessage(ConstStr255Param msg)
 
     DisposeDialog(dlg);
     RedrawAll();
+}
+
+/* ---------------------------------------------------------------------- */
+/* About box: custom-drawn content (app name, author, copyright/version)  */
+/* in a native movable modal window; dismissed by a click anywhere or by  */
+/* Return/Enter/Escape, via a modal filter rather than a visible button.  */
+/* ---------------------------------------------------------------------- */
+
+pascal void AboutDrawProc(DialogRef dlg, DialogItemIndex itemNo)
+{
+    DialogItemType type;
+    Handle itemH;
+    Rect box;
+    Str255 s;
+    short w, midX;
+
+    (void)itemNo;
+
+    GetDialogItem(dlg, 1, &type, &itemH, &box);
+    midX = box.left + (box.right - box.left) / 2;
+
+    SetForeColor(kColorBlack);
+    PenNormal();
+
+    TextFont(kFontGeneva);
+    TextFace(bold);
+    TextSize(18);
+    CStrToPStr(s, "iWordle");
+    w = StringWidth(s);
+    MoveTo(midX - w / 2, box.top + 36);
+    DrawString(s);
+
+    TextFace(normal);
+    TextSize(12);
+    CStrToPStr(s, "Bruno Castello");
+    w = StringWidth(s);
+    MoveTo(midX - w / 2, box.top + 60);
+    DrawString(s);
+
+    MoveTo(box.left + 20, box.bottom - 28);
+    LineTo(box.right - 20, box.bottom - 28);
+
+    TextSize(9);
+    CStrToPStr(s, "\xA9 Castello Designs, 2026");
+    MoveTo(box.left + 20, box.bottom - 12);
+    DrawString(s);
+
+    CStrToPStr(s, "Version 1.0");
+    w = StringWidth(s);
+    MoveTo(box.right - 20 - w, box.bottom - 12);
+    DrawString(s);
+}
+
+pascal Boolean AboutFilterProc(DialogPtr dlg, EventRecord *event, short *itemHit)
+{
+    (void)dlg;
+
+    if (event->what == mouseDown) {
+        *itemHit = 1;
+        return true;
+    }
+    if (event->what == keyDown || event->what == autoKey) {
+        char c = (char)(event->message & charCodeMask);
+        if (c == '\r' || c == 3 || c == 0x1B) {
+            *itemHit = 1;
+            return true;
+        }
+    }
+    return false;
 }
 
 /* ---------------------------------------------------------------------- */
@@ -479,7 +537,24 @@ static void OnGiveUp(void)
 
 static void OnAbout(void)
 {
-    ShowMessage("\piWordle - a native Wordle clone for Mac OS 9.");
+    DialogPtr dlg;
+    short item;
+    DialogItemType type;
+    Handle itemH;
+    Rect box;
+
+    dlg = GetNewDialog(201, NULL, (WindowPtr)-1);
+    if (dlg == NULL) return;
+
+    GetDialogItem(dlg, 1, &type, &itemH, &box);
+    SetDialogItem(dlg, 1, type, (Handle)NewUserItemUPP(&AboutDrawProc), &box);
+
+    do {
+        ModalDialog(NewModalFilterUPP(&AboutFilterProc), &item);
+    } while (item != 1);
+
+    DisposeDialog(dlg);
+    RedrawAll();
 }
 
 /* ---------------------------------------------------------------------- */

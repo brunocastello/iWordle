@@ -1,6 +1,7 @@
 /*
- * Resource definitions for iWordle: menu bar, main document window, and a
- * reusable message dialog (used for New Game / Give Up / Win / Lose text).
+ * Resource definitions for iWordle: menu bar, main document window, a
+ * small default-Platinum message dialog (New Game confirm, Give Up,
+ * Win / Lose), and a custom-drawn About box.
  */
 
 #include "Types.r"
@@ -24,7 +25,7 @@ resource 'MENU' (1, preload) {
     enabled,
     apple,
     {
-        "About iWordle", noIcon, noKey, noMark, plain;
+        "About iWordle...", noIcon, noKey, noMark, plain;
     }
 };
 
@@ -47,7 +48,7 @@ resource 'MENU' (128, "File") {
 /* ---------------------------------------------------------------------- */
 
 resource 'WIND' (128, "iWordle") {
-    { 60, 80, 660, 740 },
+    { 60, 80, 618, 582 },
     documentProc,
     visible,
     goAway,
@@ -57,11 +58,15 @@ resource 'WIND' (128, "iWordle") {
 };
 
 /* ---------------------------------------------------------------------- */
-/* Reusable message dialog (New Game confirm, Give Up, Win / Lose, About) */
+/* Small message dialog (New Game confirm, Give Up, Win / Lose)           */
+/*                                                                        */
+/* Plain Button + StaticText items only, so Mac OS 9's Appearance         */
+/* Manager renders them with the standard Platinum look, rather than      */
+/* any custom-drawn chrome.                                               */
 /* ---------------------------------------------------------------------- */
 
 resource 'DLOG' (200, "Message") {
-    { 80, 130, 260, 530 },
+    { 100, 180, 220, 480 },
     dBoxProc,
     visible,
     noGoAway,
@@ -73,14 +78,33 @@ resource 'DLOG' (200, "Message") {
 
 resource 'DITL' (200) {
     {
-        { 140, 310, 164, 380 },
+        { 80, 214, 104, 284 },
         Button { enabled, "OK" };
 
-        { 136, 306, 168, 384 },
-        UserItem { enabled };
-
-        { 16, 16, 120, 384 },
+        { 12, 12, 70, 288 },
         StaticText { disabled, "^0" };
+    }
+};
+
+/* ---------------------------------------------------------------------- */
+/* About box: custom-drawn content in a native movable modal window       */
+/* ---------------------------------------------------------------------- */
+
+resource 'DLOG' (201, "About iWordle") {
+    { 120, 160, 300, 500 },
+    movableDBoxProc,
+    visible,
+    noGoAway,
+    0,
+    201,
+    "About iWordle...",
+    centerMainScreen
+};
+
+resource 'DITL' (201) {
+    {
+        { 0, 0, 180, 340 },
+        UserItem { enabled };
     }
 };
 
