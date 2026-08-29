@@ -3,20 +3,20 @@
  * message dialog (New Game confirm, Give Up, Win / Lose), and an About
  * dialog.
  *
- * Both are real DLOG/DITL dialogs with a native Button item (for the
- * authentic Platinum push-button look) plus one UserItem that paints
- * the Platinum gray background and draws the dialog's text content by
- * hand (message text, or the About box's icon/name/credits) --
- * Retro68's headers don't expose the Appearance Manager, so there's no
- * SetThemeWindowBackground to ask for the background instead. The
- * UserItem is item 1 (drawn first, so the button ends up on top of its
- * background fill instead of the other way around) and the Button is
- * item 2; a modal filter proc remaps Return/Enter to item 2, since the
- * Dialog Manager's default-item handling is hardwired to item 1
- * regardless of item type. The UserItem's own DITL rect stays
- * non-overlapping with the button's (even though its draw proc paints
- * the whole window) purely so DITL hit-testing -- which matches items
- * in index order -- can't resolve a button click to the wrong item.
+ * Both are DLOG/DITL dialogs with two UserItems each, no native
+ * controls: item 1 paints the Platinum gray background (Retro68's
+ * headers don't expose the Appearance Manager, so there's no
+ * SetThemeWindowBackground to ask for it) and draws the dialog's text
+ * content by hand; item 2 is where the OK button's rect lives, drawn
+ * by item 1's proc via DrawPlatinumButton() since the native Button
+ * DITL item's CDEF in this toolchain doesn't render correctly against
+ * a non-white background (missing frame, white corner pixels). Item 2
+ * itself is left with no draw proc assigned, so the Dialog Manager
+ * never draws anything for it and can't paint over the button -- it
+ * only exists so ModalDialog's hit-testing has a clickable rect there.
+ * A modal filter proc remaps Return/Enter to item 2, since the Dialog
+ * Manager's default-item handling is hardwired to item 1 regardless of
+ * what's actually in it.
  */
 
 #include "Types.r"
@@ -89,7 +89,7 @@ resource 'DITL' (200) {
         UserItem { enabled };
 
         { 98, 135, 122, 205 },
-        Button { enabled, "OK" };
+        UserItem { enabled };
     }
 };
 
@@ -110,7 +110,7 @@ resource 'DITL' (201) {
         UserItem { enabled };
 
         { 224, 105, 248, 175 },
-        Button { enabled, "OK" };
+        UserItem { enabled };
     }
 };
 

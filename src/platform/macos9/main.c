@@ -110,6 +110,7 @@ static void GetLetterKeyRect(short row, short idx, Rect *outRect);
 static void GetBackspaceKeyRect(Rect *outRect);
 
 static void DrawBevelRect(const Rect *r, RGBColor fill);
+static void DrawPlatinumButton(const Rect *r, ConstStr255Param label);
 static void DrawCenteredLetter(const Rect *r, char letter, short fontSize, const RGBColor *color);
 static void DrawCenteredStringAt(short centerX, short baselineY, ConstStr255Param s);
 static void DrawTile(short row, short col);
@@ -213,6 +214,29 @@ static void DrawBevelRect(const Rect *r, RGBColor fill)
 
     SetForeColor(kColorBorder);
     FrameRect(r);
+}
+
+/* Hand-drawn rounded push button: the native Button DITL item's CDEF in
+ * this toolchain doesn't render correctly against a non-white dialog
+ * background (missing frame, white corner pixels where it erases to
+ * white internally regardless of the port's BackColor), so we draw the
+ * button ourselves to get the real Platinum shape reliably. */
+static void DrawPlatinumButton(const Rect *r, ConstStr255Param label)
+{
+    const short kOval = 12;
+
+    SetForeColor(kColorKeyFace);
+    PaintRoundRect(r, kOval, kOval);
+
+    SetForeColor(kColorBorder);
+    FrameRoundRect(r, kOval, kOval);
+
+    SetForeColor(kColorBlack);
+    TextFont(kFontGeneva);
+    TextFace(bold);
+    TextSize(12);
+    DrawCenteredStringAt(r->left + (r->right - r->left) / 2,
+                          r->top + (r->bottom - r->top) / 2 + 4, label);
 }
 
 static void DrawCenteredLetter(const Rect *r, char letter, short fontSize, const RGBColor *color)
@@ -460,6 +484,9 @@ pascal void MessageContentDrawProc(DialogRef dlg, DialogItemIndex itemNo)
     TextSize(11);
     DrawCenteredStringAt(box.left + (box.right - box.left) / 2,
                           box.top + (box.bottom - box.top) / 2 + 4, gMessageText);
+
+    GetDialogItem(dlg, 2, &type, &itemH, &box);
+    DrawPlatinumButton(&box, "\pOK");
 }
 
 static void ShowMessage(ConstStr255Param msg)
@@ -512,43 +539,55 @@ pascal void AboutContentDrawProc(DialogRef dlg, DialogItemIndex itemNo)
     PlotIconID(&iconRect, atNone, ttNone, 128);
 
     /* Classic About-box convention: the app name is set in the bold
-     * System font (the OS's own UI face), while body/credit lines use
-     * Geneva -- two distinct typefaces, not just two sizes of one. */
-    TextFont(systemFont);
+     * System font, while body/credit lines use Geneva -- two distinct
+     * typefaces, not just two sizes of one. Charcoal isn't a fixed
+     * classic font ID (it's a later TrueType addition), so it has to
+     * be looked up by name; GetFNum() falls back to systemFont (0) if
+     * it isn't installed. */
+    {
+        Str255 fontName;
+        short charcoalID;
+        CStrToPStr(fontName, "Charcoal");
+        GetFNum(fontName, &charcoalID);
+        TextFont(charcoalID);
+    }
     TextFace(bold);
-    TextSize(14);
+    TextSize(12);
     CStrToPStr(s, "iWordle 1.0");
     DrawCenteredStringAt(midX, box.top + 56, s);
 
     TextFont(kFontGeneva);
 
     TextFace(normal);
-    TextSize(12);
+    TextSize(10);
     CStrToPStr(s, "A native Wordle clone for Mac OS 9");
     DrawCenteredStringAt(midX, box.top + 76, s);
 
     TextFace(bold);
-    TextSize(14);
+    TextSize(12);
     CStrToPStr(s, "Bruno Castello");
     DrawCenteredStringAt(midX, box.top + 104, s);
 
     TextFace(normal);
-    TextSize(12);
+    TextSize(10);
     CStrToPStr(s, "bfcastello@hotmail.com");
     DrawCenteredStringAt(midX, box.top + 124, s);
 
     TextFace(bold);
-    TextSize(14);
+    TextSize(12);
     CStrToPStr(s, "Engineer: Claude Sonnet 5");
     DrawCenteredStringAt(midX, box.top + 152, s);
 
     TextFace(normal);
-    TextSize(12);
+    TextSize(10);
     CStrToPStr(s, "\xA9 Castello Designs, 2026");
     DrawCenteredStringAt(midX, box.top + 180, s);
 
     CStrToPStr(s, "Built with Retro68");
     DrawCenteredStringAt(midX, box.top + 200, s);
+
+    GetDialogItem(dlg, 2, &type, &itemH, &box);
+    DrawPlatinumButton(&box, "\pOK");
 }
 
 /* ---------------------------------------------------------------------- */
