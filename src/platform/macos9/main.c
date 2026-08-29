@@ -102,6 +102,7 @@ static Boolean gDone = false;
 
 pascal void MessageContentDrawProc(DialogRef dlg, DialogItemIndex itemNo);
 pascal void AboutContentDrawProc(DialogRef dlg, DialogItemIndex itemNo);
+pascal Boolean DismissOnEnterFilterProc(DialogPtr dlg, EventRecord *event, short *itemHit);
 static void PaintFullDialogBackground(DialogRef dlg);
 
 static void GetTileRect(short row, short col, Rect *outRect);
@@ -399,18 +400,35 @@ static void BuildLoseMessage(Str255 out)
 /* for a Platinum background -- item 1 in both dialogs below is a         */
 /* UserItem that paints the WHOLE dialog window gray (not just its own    */
 /* item rect) and draws that dialog's text content by hand. Item 2 is a   */
-/* real native Button, marked as the dialog's default item via            */
-/* SetDialogDefaultItem() -- letting the Dialog Manager draw its own       */
-/* native default-button emphasis (the bold outline / halo Mac OS 9       */
-/* draws around a dialog's default button) instead of us hand-drawing a   */
-/* frame around it. That hand-drawn frame is what we used to do, and it   */
-/* was fighting the Dialog Manager's own default-item rendering the whole */
-/* time -- no combination of manual corner-patching ever fully worked     */
-/* because we kept re-drawing on top of a native mechanism that redraws   */
-/* itself independently (e.g. to animate). Going fully native here (no    */
-/* custom filter, no manual patch, no extra frame item) is what actually  */
-/* fixes it, and is also just literally what "native button" means.       */
+/* plain native Button, completely untouched by our own drawing code.     */
+/*                                                                        */
+/* We tried marking it as the dialog's default item via                   */
+/* SetDialogDefaultItem() to get the native bold-outline emphasis for     */
+/* free, and before that a hand-drawn frame around it in a third item --  */
+/* both made the button render *worse* against our custom background      */
+/* (missing frame, stray white pixels, or the control barely rendering    */
+/* at all) than just leaving it as a plain, undecorated native Button.    */
+/* This toolchain's Control Manager/Appearance-adjacent theming has real  */
+/* gaps for a native control on a non-default dialog background, so a     */
+/* plain Button is the most reliable native rendering available here.     */
+/* Because Return/Enter is hardwired to item 1 by Dialog Manager          */
+/* convention regardless of item type (with no default item marked),      */
+/* this filter proc remaps it to item 2 -- no drawing, just the remap.    */
 /* ---------------------------------------------------------------------- */
+
+pascal Boolean DismissOnEnterFilterProc(DialogPtr dlg, EventRecord *event, short *itemHit)
+{
+    (void)dlg;
+
+    if (event->what == keyDown || event->what == autoKey) {
+        char c = (char)(event->message & charCodeMask);
+        if (c == '\r' || c == 3) {
+            *itemHit = 2;
+            return true;
+        }
+    }
+    return false;
+}
 
 static void PaintFullDialogBackground(DialogRef dlg)
 {
@@ -478,10 +496,8 @@ static void ShowMessage(ConstStr255Param msg)
     GetDialogItem(dlg, 1, &type, &itemH, &box);
     SetDialogItem(dlg, 1, type, (Handle)NewUserItemUPP(&MessageContentDrawProc), &box);
 
-    SetDialogDefaultItem(dlg, 2);
-
     do {
-        ModalDialog(NULL, &item);
+        ModalDialog(NewModalFilterUPP(&DismissOnEnterFilterProc), &item);
     } while (item != 2);
 
     DisposeDialog(dlg);
@@ -646,10 +662,8 @@ static void OnAbout(void)
     GetDialogItem(dlg, 1, &type, &itemH, &box);
     SetDialogItem(dlg, 1, type, (Handle)NewUserItemUPP(&AboutContentDrawProc), &box);
 
-    SetDialogDefaultItem(dlg, 2);
-
     do {
-        ModalDialog(NULL, &item);
+        ModalDialog(NewModalFilterUPP(&DismissOnEnterFilterProc), &item);
     } while (item != 2);
 
     DisposeDialog(dlg);
