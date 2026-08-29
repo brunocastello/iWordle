@@ -84,7 +84,8 @@ RUN mkdir -p $ROOT_DIR/build/target/llvm-project && \
       -DCMAKE_BUILD_TYPE=Release \
       -DLLVM_TARGETS_TO_BUILD="PowerPC" \
       -DLLVM_ENABLE_ASSERTIONS=OFF \
-      -DCMAKE_POLICY_VERSION_MINIMUM=3.5 && \
+      -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
+      -DPYTHON_EXECUTABLE=$(which python3) && \
     ninja dsymutil && \
     mkdir -p $TARGET_PREFIX/bin && \
     cp bin/dsymutil $TARGET_PREFIX/bin/$TARGET-dsymutil && \
