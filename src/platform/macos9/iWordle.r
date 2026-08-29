@@ -4,17 +4,19 @@
  * dialog.
  *
  * Both are real DLOG/DITL dialogs with a native Button item (for the
- * authentic Platinum push-button look, via GetNewDialog/ModalDialog),
- * plus one UserItem for hand-drawn text content (message text, or the
- * About box's icon/name/credits). The Button item is item 1, so
- * Return/Enter triggers it via the Dialog Manager's normal default-
- * item handling with no custom filter needed. The UserItem's rect
- * never overlaps the button's, so DITL hit-testing (which matches
- * items in index order) can't resolve a button click to the wrong
- * item. The Platinum gray dialog background comes from
- * SetThemeWindowBackground() (Appearance Manager) rather than manual
- * painting, since manually painting it was what broke native
- * StaticText rendering in an earlier iteration.
+ * authentic Platinum push-button look) plus one UserItem that paints
+ * the Platinum gray background and draws the dialog's text content by
+ * hand (message text, or the About box's icon/name/credits) --
+ * Retro68's headers don't expose the Appearance Manager, so there's no
+ * SetThemeWindowBackground to ask for the background instead. The
+ * UserItem is item 1 (drawn first, so the button ends up on top of its
+ * background fill instead of the other way around) and the Button is
+ * item 2; a modal filter proc remaps Return/Enter to item 2, since the
+ * Dialog Manager's default-item handling is hardwired to item 1
+ * regardless of item type. The UserItem's own DITL rect stays
+ * non-overlapping with the button's (even though its draw proc paints
+ * the whole window) purely so DITL hit-testing -- which matches items
+ * in index order -- can't resolve a button click to the wrong item.
  */
 
 #include "Types.r"
@@ -83,11 +85,11 @@ resource 'DLOG' (200, "Message") {
 
 resource 'DITL' (200) {
     {
-        { 98, 135, 122, 205 },
-        Button { enabled, "OK" };
-
         { 0, 0, 76, 340 },
         UserItem { enabled };
+
+        { 98, 135, 122, 205 },
+        Button { enabled, "OK" };
     }
 };
 
@@ -104,11 +106,11 @@ resource 'DLOG' (201, "About iWordle") {
 
 resource 'DITL' (201) {
     {
-        { 204, 105, 228, 175 },
-        Button { enabled, "OK" };
-
         { 0, 0, 200, 280 },
         UserItem { enabled };
+
+        { 204, 105, 228, 175 },
+        Button { enabled, "OK" };
     }
 };
 

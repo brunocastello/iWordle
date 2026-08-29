@@ -12,7 +12,6 @@
 #include <Menus.h>
 #include <Fonts.h>
 #include <Dialogs.h>
-#include <Appearance.h>
 #include <Events.h>
 #include <ToolUtils.h>
 #include <TextUtils.h>
@@ -103,6 +102,8 @@ static Boolean gDone = false;
 
 pascal void MessageContentDrawProc(DialogRef dlg, DialogItemIndex itemNo);
 pascal void AboutContentDrawProc(DialogRef dlg, DialogItemIndex itemNo);
+pascal Boolean DismissOnEnterFilterProc(DialogPtr dlg, EventRecord *event, short *itemHit);
+static void PaintFullDialogBackground(DialogRef dlg);
 
 static void GetTileRect(short row, short col, Rect *outRect);
 static void GetLetterKeyRect(short row, short idx, Rect *outRect);
@@ -387,16 +388,44 @@ static void BuildLoseMessage(Str255 out)
 }
 
 /* ---------------------------------------------------------------------- */
-/* Message dialog (New Game / Give Up / Win / Lose)                       */
+/* Shared modal helpers                                                    */
 /*                                                                        */
-/* Item 1 is a native Button (so Return/Enter triggers it via the Dialog  */
-/* Manager's normal default-item handling); item 2 is a UserItem that     */
-/* only draws the message text, never a background fill, and whose rect  */
-/* never overlaps the button's -- both are needed to avoid regressions    */
-/* hit earlier (a background-painting UserItem broke native StaticText    */
-/* rendering, and an overlapping item rect stole clicks meant for the     */
-/* button). The Platinum gray dialog background itself comes from         */
-/* SetThemeWindowBackground().                                            */
+/* Retro68's headers don't expose the Appearance Manager (no             */
+/* Appearance.h at all), so there's no SetThemeWindowBackground to ask     */
+/* for a Platinum background -- we paint it ourselves. Item 1 in both     */
+/* dialogs below is a UserItem that paints the WHOLE dialog window gray   */
+/* (not just its own item rect) and then draws that dialog's text         */
+/* content, so it must be drawn before item 2 (a native Button, for the   */
+/* authentic look) which needs to end up on top, unobscured. Because      */
+/* Return/Enter is hardwired to item 1 by Dialog Manager convention       */
+/* regardless of item type, a filter proc remaps it to item 2 instead.    */
+/* ---------------------------------------------------------------------- */
+
+pascal Boolean DismissOnEnterFilterProc(DialogPtr dlg, EventRecord *event, short *itemHit)
+{
+    (void)dlg;
+
+    if (event->what == keyDown || event->what == autoKey) {
+        char c = (char)(event->message & charCodeMask);
+        if (c == '\r' || c == 3) {
+            *itemHit = 2;
+            return true;
+        }
+    }
+    return false;
+}
+
+static void PaintFullDialogBackground(DialogRef dlg)
+{
+    Rect windowRect;
+
+    GetPortBounds(GetWindowPort((WindowPtr)dlg), &windowRect);
+    SetForeColor(kColorWindowBG);
+    PaintRect(&windowRect);
+}
+
+/* ---------------------------------------------------------------------- */
+/* Message dialog (New Game / Give Up / Win / Lose)                       */
 /* ---------------------------------------------------------------------- */
 
 /* Set by ShowMessage() just before the modal loop; read by
@@ -411,7 +440,9 @@ pascal void MessageContentDrawProc(DialogRef dlg, DialogItemIndex itemNo)
 
     (void)itemNo;
 
-    GetDialogItem(dlg, 2, &type, &itemH, &box);
+    PaintFullDialogBackground(dlg);
+
+    GetDialogItem(dlg, 1, &type, &itemH, &box);
     SetForeColor(kColorBlack);
     PenNormal();
     TextFont(kFontGeneva);
@@ -434,14 +465,12 @@ static void ShowMessage(ConstStr255Param msg)
     dlg = GetNewDialog(200, NULL, (WindowPtr)-1);
     if (dlg == NULL) return;
 
-    SetThemeWindowBackground((WindowPtr)dlg, kThemeBrushDialogBackgroundActive, true);
-
-    GetDialogItem(dlg, 2, &type, &itemH, &box);
-    SetDialogItem(dlg, 2, type, (Handle)NewUserItemUPP(&MessageContentDrawProc), &box);
+    GetDialogItem(dlg, 1, &type, &itemH, &box);
+    SetDialogItem(dlg, 1, type, (Handle)NewUserItemUPP(&MessageContentDrawProc), &box);
 
     do {
-        ModalDialog(NULL, &item);
-    } while (item != 1);
+        ModalDialog(NewModalFilterUPP(&DismissOnEnterFilterProc), &item);
+    } while (item != 2);
 
     DisposeDialog(dlg);
     RedrawAll();
@@ -461,7 +490,9 @@ pascal void AboutContentDrawProc(DialogRef dlg, DialogItemIndex itemNo)
 
     (void)itemNo;
 
-    GetDialogItem(dlg, 2, &type, &itemH, &box);
+    PaintFullDialogBackground(dlg);
+
+    GetDialogItem(dlg, 1, &type, &itemH, &box);
     midX = box.left + (box.right - box.left) / 2;
 
     SetForeColor(kColorBlack);
@@ -590,14 +621,12 @@ static void OnAbout(void)
     dlg = GetNewDialog(201, NULL, (WindowPtr)-1);
     if (dlg == NULL) return;
 
-    SetThemeWindowBackground((WindowPtr)dlg, kThemeBrushDialogBackgroundActive, true);
-
-    GetDialogItem(dlg, 2, &type, &itemH, &box);
-    SetDialogItem(dlg, 2, type, (Handle)NewUserItemUPP(&AboutContentDrawProc), &box);
+    GetDialogItem(dlg, 1, &type, &itemH, &box);
+    SetDialogItem(dlg, 1, type, (Handle)NewUserItemUPP(&AboutContentDrawProc), &box);
 
     do {
-        ModalDialog(NULL, &item);
-    } while (item != 1);
+        ModalDialog(NewModalFilterUPP(&DismissOnEnterFilterProc), &item);
+    } while (item != 2);
 
     DisposeDialog(dlg);
     RedrawAll();
