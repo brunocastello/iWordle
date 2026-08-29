@@ -1005,6 +1005,16 @@ static Boolean PromptForPlayerName(Str255 outName)
     dlg = GetNewDialog(202, NULL, (WindowPtr)-1);
     if (dlg == NULL) { outName[0] = 0; return false; }
 
+    /* A window created via the classic Dialog Manager (GetNewDialog) has
+     * no root control -- that's an Appearance-era concept, and without
+     * one SetKeyboardFocus fails outright with errNoRootControl (-30586,
+     * confirmed via on-screen diagnostics). CreateRootControl gives the
+     * window the container the keyboard-focus system needs to exist. */
+    {
+        ControlRef rootControl;
+        CreateRootControl((WindowPtr)dlg, &rootControl);
+    }
+
     GetDialogItem(dlg, 1, &type, &itemH, &box);
     SetDialogItem(dlg, 1, type, (Handle)NewUserItemUPP(&NameEntryContentDrawProc), &box);
 
