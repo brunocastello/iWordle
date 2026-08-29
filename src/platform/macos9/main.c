@@ -105,6 +105,7 @@ pascal void AboutContentDrawProc(DialogRef dlg, DialogItemIndex itemNo);
 pascal void ButtonFrameProc(DialogRef dlg, DialogItemIndex itemNo);
 pascal Boolean DismissOnEnterFilterProc(DialogPtr dlg, EventRecord *event, short *itemHit);
 static void PaintFullDialogBackground(DialogRef dlg);
+static void PatchButtonCorners(DialogRef dlg);
 
 static void GetTileRect(short row, short col, Rect *outRect);
 static void GetLetterKeyRect(short row, short idx, Rect *outRect);
@@ -216,27 +217,22 @@ static void DrawBevelRect(const Rect *r, RGBColor fill)
     FrameRect(r);
 }
 
-/* Classic "this is the default button" emphasis: a bold rounded frame
- * drawn around the real native Button item, inset a few pixels out
- * from its rect. This is the standard Inside Macintosh technique for
- * marking a dialog's default button and is what distinguishes an OK
- * button (bordered) from a Cancel button (plain) in a native alert.
- *
- * The native Button's own CDEF leaves the 4 corner pixels of its
+/* The native Button's own CDEF leaves the 4 corner pixels of its
  * bounding rect white -- outside the rounded shape it actually fills,
  * and apparently hardcoded rather than matched to the port's
  * BackColor -- so against our Platinum gray dialog they show up as
- * stray white dots. Since this proc (item 3) draws after the button
- * (item 2), we can patch those exact pixels back to gray here before
- * drawing the frame. */
-pascal void ButtonFrameProc(DialogRef dlg, DialogItemIndex itemNo)
+ * stray white dots. Patching them from item 3's own draw proc didn't
+ * survive: the Dialog Manager evidently redraws embedded controls via
+ * a separate pass that runs after all DITL item drawing regardless of
+ * index, so the button's own repaint was overwriting the patch right
+ * back to white. Called explicitly as the last step after DrawDialog
+ * returns (see DismissOnEnterFilterProc), this runs after that control
+ * repaint too and actually sticks. */
+static void PatchButtonCorners(DialogRef dlg)
 {
     DialogItemType type;
     Handle itemH;
-    Rect box;
-    Rect corner;
-
-    (void)itemNo;
+    Rect box, corner;
 
     GetDialogItem(dlg, 2, &type, &itemH, &box);
 
@@ -249,6 +245,25 @@ pascal void ButtonFrameProc(DialogRef dlg, DialogItemIndex itemNo)
     PaintRect(&corner);
     SetRect(&corner, box.right - 2, box.bottom - 2, box.right, box.bottom);
     PaintRect(&corner);
+}
+
+/* Classic "this is the default button" emphasis: a bold rounded frame
+ * drawn around the real native Button item, inset a few pixels out
+ * from its rect. This is the standard Inside Macintosh technique for
+ * marking a dialog's default button and is what distinguishes an OK
+ * button (bordered) from a Cancel button (plain) in a native alert.
+ * Unlike the corner pixels, this frame sits entirely outside the
+ * button's own bounding rect, so it isn't at risk of being overwritten
+ * by the button's control repaint and can stay a normal item proc. */
+pascal void ButtonFrameProc(DialogRef dlg, DialogItemIndex itemNo)
+{
+    DialogItemType type;
+    Handle itemH;
+    Rect box;
+
+    (void)itemNo;
+
+    GetDialogItem(dlg, 2, &type, &itemH, &box);
 
     SetForeColor(kColorBlack);
     InsetRect(&box, -4, -4);
@@ -450,7 +465,21 @@ static void BuildLoseMessage(Str255 out)
 
 pascal Boolean DismissOnEnterFilterProc(DialogPtr dlg, EventRecord *event, short *itemHit)
 {
-    (void)dlg;
+    (void)itemHit;
+
+    /* Take over update handling entirely so PatchButtonCorners() can
+     * run as a guaranteed-last step after DrawDialog (and whatever
+     * separate pass redraws the embedded Button control) is done --
+     * see PatchButtonCorners() for why that ordering matters. */
+    if (event->what == updateEvt && (WindowPtr)event->message == (WindowPtr)dlg) {
+        WindowPtr w = (WindowPtr)dlg;
+        BeginUpdate(w);
+        SetPortWindowPort(w);
+        DrawDialog(dlg);
+        PatchButtonCorners(dlg);
+        EndUpdate(w);
+        return true;
+    }
 
     if (event->what == keyDown || event->what == autoKey) {
         char c = (char)(event->message & charCodeMask);
@@ -497,9 +526,17 @@ pascal void MessageContentDrawProc(DialogRef dlg, DialogItemIndex itemNo)
     GetDialogItem(dlg, 1, &type, &itemH, &box);
     SetForeColor(kColorBlack);
     PenNormal();
-    TextFont(kFontGeneva);
+
+    /* Charcoal 12pt -- same font and size as the menu bar. */
+    {
+        Str255 fontName;
+        short charcoalID;
+        CStrToPStr(fontName, "Charcoal");
+        GetFNum(fontName, &charcoalID);
+        TextFont(charcoalID);
+    }
     TextFace(normal);
-    TextSize(11);
+    TextSize(12);
     DrawCenteredStringAt(box.left + (box.right - box.left) / 2,
                           box.top + (box.bottom - box.top) / 2 + 4, gMessageText);
 }
