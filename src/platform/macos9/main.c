@@ -105,6 +105,13 @@ static WordleStatsBook gStats;
 static Str255 gLastPlayerName = { 0 };
 static ControlHandle gNameFieldControl = NULL;
 
+/* Temporary on-screen diagnostics for the name-field keyboard-input bug
+ * -- remove once that's confirmed fixed. 1 is a sentinel meaning "not
+ * called yet" (not a real OSErr value in normal use here). */
+static OSErr gDebugFocusErr = 1;
+static short gDebugLastPart = -999;
+static short gDebugKeyCount = 0;
+
 /* ---------------------------------------------------------------------- */
 /* Forward declarations                                                   */
 /* ---------------------------------------------------------------------- */
@@ -624,7 +631,9 @@ pascal Boolean NameEntryFilterProc(DialogPtr dlg, EventRecord *event, short *ite
              * ModalDialog doesn't guarantee that's already the case when
              * it hands us a keyDown. */
             SetPortWindowPort((WindowPtr)dlg);
-            HandleControlKey(gNameFieldControl, keyCode, c, event->modifiers);
+            gDebugLastPart = HandleControlKey(gNameFieldControl, keyCode, c, event->modifiers);
+            gDebugKeyCount++;
+            NameEntryContentDrawProc(dlg, 1);
         }
         *itemHit = 0;
         return true;
@@ -959,6 +968,28 @@ pascal void NameEntryContentDrawProc(DialogRef dlg, DialogItemIndex itemNo)
     DrawCenteredStringAt(box.left + (box.right - box.left) / 2,
                           box.top + (box.bottom - box.top) / 2 + 4,
                           "\pWho's playing?");
+
+    /* Temporary diagnostic line -- see gDebugFocusErr et al. */
+    {
+        Str255 dbg;
+        Str255 numStr;
+
+        CStrToPStr(dbg, "SKF=");
+        NumToString((long)gDebugFocusErr, numStr);
+        PStrAppend(dbg, numStr);
+        PStrAppend(dbg, "\p HCK=");
+        NumToString((long)gDebugLastPart, numStr);
+        PStrAppend(dbg, numStr);
+        PStrAppend(dbg, "\p n=");
+        NumToString((long)gDebugKeyCount, numStr);
+        PStrAppend(dbg, numStr);
+
+        TextFont(kFontGeneva);
+        TextFace(normal);
+        TextSize(9);
+        DrawCenteredStringAt(box.left + (box.right - box.left) / 2,
+                              box.bottom - 4, dbg);
+    }
 }
 
 /* Blocks until OK is hit; outName is empty if the field was left blank
@@ -995,12 +1026,16 @@ static Boolean PromptForPlayerName(Str255 outName)
      * doing this beforehand meant the background repaint in DrawDialog()
      * happened right after the control's very first (focused) draw,
      * which is what made the field flash and then never come back. */
+    gDebugFocusErr = 1;
+    gDebugLastPart = -999;
+    gDebugKeyCount = 0;
     if (gNameFieldControl != NULL) {
         if (gLastPlayerName[0] > 0) {
             SetControlData(gNameFieldControl, kControlEditTextPart, kControlEditTextTextTag,
                             gLastPlayerName[0], (Ptr)(gLastPlayerName + 1));
         }
-        SetKeyboardFocus((WindowPtr)dlg, gNameFieldControl, kControlFocusNextPart);
+        gDebugFocusErr = SetKeyboardFocus((WindowPtr)dlg, gNameFieldControl, kControlFocusNextPart);
+        NameEntryContentDrawProc(dlg, 1);
     }
 
     item = 0;
