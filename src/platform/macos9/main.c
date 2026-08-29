@@ -220,16 +220,37 @@ static void DrawBevelRect(const Rect *r, RGBColor fill)
  * drawn around the real native Button item, inset a few pixels out
  * from its rect. This is the standard Inside Macintosh technique for
  * marking a dialog's default button and is what distinguishes an OK
- * button (bordered) from a Cancel button (plain) in a native alert. */
+ * button (bordered) from a Cancel button (plain) in a native alert.
+ *
+ * The native Button's own CDEF leaves the 4 corner pixels of its
+ * bounding rect white -- outside the rounded shape it actually fills,
+ * and apparently hardcoded rather than matched to the port's
+ * BackColor -- so against our Platinum gray dialog they show up as
+ * stray white dots. Since this proc (item 3) draws after the button
+ * (item 2), we can patch those exact pixels back to gray here before
+ * drawing the frame. */
 pascal void ButtonFrameProc(DialogRef dlg, DialogItemIndex itemNo)
 {
     DialogItemType type;
     Handle itemH;
     Rect box;
+    Rect corner;
 
     (void)itemNo;
 
     GetDialogItem(dlg, 2, &type, &itemH, &box);
+
+    SetForeColor(kColorWindowBG);
+    SetRect(&corner, box.left, box.top, box.left + 2, box.top + 2);
+    PaintRect(&corner);
+    SetRect(&corner, box.right - 2, box.top, box.right, box.top + 2);
+    PaintRect(&corner);
+    SetRect(&corner, box.left, box.bottom - 2, box.left + 2, box.bottom);
+    PaintRect(&corner);
+    SetRect(&corner, box.right - 2, box.bottom - 2, box.right, box.bottom);
+    PaintRect(&corner);
+
+    SetForeColor(kColorBlack);
     InsetRect(&box, -4, -4);
     PenSize(3, 3);
     FrameRoundRect(&box, 16, 16);
@@ -532,7 +553,7 @@ pascal void AboutContentDrawProc(DialogRef dlg, DialogItemIndex itemNo)
     SetForeColor(kColorBlack);
     PenNormal();
 
-    SetRect(&iconRect, midX - 16, box.top + 6, midX + 16, box.top + 38);
+    SetRect(&iconRect, midX - 16, box.top + 14, midX + 16, box.top + 46);
     PlotIconID(&iconRect, atNone, ttNone, 128);
 
     /* Charcoal (Plain) for the three emphasis lines, Geneva (Plain) for
@@ -551,35 +572,35 @@ pascal void AboutContentDrawProc(DialogRef dlg, DialogItemIndex itemNo)
         TextFont(charcoalID);
         TextSize(12);
         CStrToPStr(s, "iWordle 1.0");
-        DrawCenteredStringAt(midX, box.top + 56, s);
+        DrawCenteredStringAt(midX, box.top + 64, s);
 
         TextFont(kFontGeneva);
         TextSize(10);
         CStrToPStr(s, "A native Wordle clone for Mac OS 9");
-        DrawCenteredStringAt(midX, box.top + 76, s);
+        DrawCenteredStringAt(midX, box.top + 84, s);
 
         TextFont(charcoalID);
         TextSize(12);
         CStrToPStr(s, "Bruno Castello");
-        DrawCenteredStringAt(midX, box.top + 104, s);
+        DrawCenteredStringAt(midX, box.top + 112, s);
 
         TextFont(kFontGeneva);
         TextSize(10);
         CStrToPStr(s, "bfcastello@hotmail.com");
-        DrawCenteredStringAt(midX, box.top + 124, s);
+        DrawCenteredStringAt(midX, box.top + 132, s);
 
         TextFont(charcoalID);
         TextSize(12);
         CStrToPStr(s, "Engineer: Claude Sonnet 5");
-        DrawCenteredStringAt(midX, box.top + 152, s);
+        DrawCenteredStringAt(midX, box.top + 160, s);
 
         TextFont(kFontGeneva);
         TextSize(10);
         CStrToPStr(s, "\xA9 Castello Designs, 2026");
-        DrawCenteredStringAt(midX, box.top + 180, s);
+        DrawCenteredStringAt(midX, box.top + 188, s);
 
         CStrToPStr(s, "Built with Retro68");
-        DrawCenteredStringAt(midX, box.top + 200, s);
+        DrawCenteredStringAt(midX, box.top + 208, s);
     }
 }
 
