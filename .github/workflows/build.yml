@@ -27,7 +27,7 @@ jobs:
           ls -la
           EOF
 
-      - name: Package release assets (.sit archive + DiskCopy 4.2 image)
+      - name: Package release assets (.sit archive)
         run: |
           set -euo pipefail
 
@@ -47,15 +47,12 @@ jobs:
           cp "build/%iWordle.ad" package/._iWordle
           /tmp/sit-src/sit -T APPL -C WRDL -o package/iWordle.sit package/iWordle
 
-          python3 tools/make_diskcopy42.py build/iWordle.dsk package/iWordle-DiskCopy42.dsk iWordle
-
       - name: Upload disk image + app bundle
         uses: actions/upload-artifact@v4
         with:
           name: iWordle-mac-os-9-ppc
           path: |
             build/iWordle.dsk
-            package/iWordle-DiskCopy42.dsk
             build/iWordle.APPL
             build/iWordle.bin
             package/iWordle.sit
