@@ -73,7 +73,8 @@ RUN mkdir -p $ROOT_DIR/build/target/llvm-project && \
     CC=clang CXX=clang++ cmake -G Ninja $ROOT_DIR/llvm-project/llvm \
       -DCMAKE_BUILD_TYPE=Release \
       -DLLVM_TARGETS_TO_BUILD="PowerPC" \
-      -DLLVM_ENABLE_ASSERTIONS=OFF && \
+      -DLLVM_ENABLE_ASSERTIONS=OFF \
+      -DCMAKE_POLICY_VERSION_MINIMUM=3.5 && \
     ninja dsymutil && \
     mkdir -p $TARGET_PREFIX/bin && \
     cp bin/dsymutil $TARGET_PREFIX/bin/$TARGET-dsymutil && \
