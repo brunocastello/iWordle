@@ -54,8 +54,8 @@ enum {
 #define KEYBOARD_TOP      424
 #define KB_ROW0_LEFT      93
 #define KB_ROW1_LEFT      117
-#define KB_ROW2_LEFT      117
-#define KB_BACKSPACE_WIDTH 90
+#define KB_ROW2_LEFT      112
+#define KB_BACKSPACE_WIDTH 100
 #define KB_ROW_COUNT      3
 
 static const char * const kKBRows[KB_ROW_COUNT] = {
@@ -289,11 +289,13 @@ static void DrawKeyboard(void)
     {
         Str255 s;
         short w;
-        s[0] = 2;
-        s[1] = '<';
-        s[2] = '-';
+        s[0] = 4;
+        s[1] = 'B';
+        s[2] = 'A';
+        s[3] = 'C';
+        s[4] = 'K';
         TextFont(kFontGeneva);
-        TextSize(16);
+        TextSize(14);
         TextFace(bold);
         SetForeColor(kColorBorder);
         w = StringWidth(s);
