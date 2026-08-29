@@ -19,7 +19,6 @@
 #include <Icons.h>
 #include <AppleEvents.h>
 #include <Files.h>
-#include <Folders.h>
 
 #include <string.h>
 #include <ctype.h>
@@ -439,41 +438,68 @@ static void BuildLoseMessage(Str255 out)
 /* Support:iWordle: -- the same place (and same per-app subfolder shape)  */
 /* a future Mac OS X port would use under ~/Library/Application Support,  */
 /* so the on-disk convention doesn't have to change when this is ported.  */
-/* FindFolder locates (and creates, if missing) Application Support       */
-/* itself; our own "iWordle" subfolder inside it is located or created    */
-/* the same way classic apps always have, since Folders.h has no call     */
-/* that does both in one step for an app-owned subfolder.                */
+/*                                                                        */
+/* This toolchain's headers have no Folder Manager at all (no FindFolder, */
+/* no folder-type constants -- confirmed by there being no Folders.yaml   */
+/* in autc04/multiversal's header generator, the same reason Controls.h   */
+/* and Appearance.h don't exist as files either), so the System Folder is */
+/* found the pre-Folder-Manager way instead: SysEnvirons()'s sysVRefNum   */
+/* is a working-directory refnum for the System Folder, which GetWDInfo   */
+/* resolves to a real (vRefNum, dirID) pair. From there, each subfolder   */
+/* is looked up by name via PBGetCatInfoSync and created with             */
+/* FSpDirCreate if it isn't there yet -- the other convenience calls this */
+/* would normally use (DirCreate, FSpGetDirectoryID) don't exist in this  */
+/* header set either, only their lower-level FSSpec/PB equivalents.       */
 /* ---------------------------------------------------------------------- */
+
+static OSErr ResolveOrCreateSubfolder(short vRefNum, long parentDirID,
+                                       ConstStr255Param name, long *outDirID)
+{
+    CInfoPBRec pb;
+    FSSpec spec;
+    OSErr err;
+
+    memset(&pb, 0, sizeof(pb));
+    pb.dirInfo.ioNamePtr = (StringPtr)name;
+    pb.dirInfo.ioVRefNum = vRefNum;
+    pb.dirInfo.ioDrDirID = parentDirID;
+    pb.dirInfo.ioFDirIndex = 0;
+    if (PBGetCatInfoSync(&pb) == noErr) {
+        *outDirID = pb.dirInfo.ioDrDirID;
+        return noErr;
+    }
+
+    err = FSMakeFSSpec(vRefNum, parentDirID, name, &spec);
+    if (err != noErr && err != fnfErr) return err;
+
+    return FSpDirCreate(&spec, smSystemScript, outDirID);
+}
 
 static OSErr GetStatsFolder(short *outVRefNum, long *outDirID)
 {
+    SysEnvRec env;
     short vRefNum;
+    long sysDirID;
+    long procID;
     long appSupportDirID;
-    long dirID;
-    Boolean isDir;
-    FSSpec folderSpec;
     Str255 name;
     OSErr err;
 
-    err = FindFolder(kOnSystemDisk, kApplicationSupportFolderType, kCreateFolder,
-                      &vRefNum, &appSupportDirID);
+    err = SysEnvirons(curSysEnvVers, &env);
+    if (err != noErr) return err;
+
+    err = GetWDInfo(env.sysVRefNum, &vRefNum, &sysDirID, &procID);
+    if (err != noErr) return err;
+
+    CStrToPStr(name, "Application Support");
+    err = ResolveOrCreateSubfolder(vRefNum, sysDirID, name, &appSupportDirID);
     if (err != noErr) return err;
 
     CStrToPStr(name, "iWordle");
-    err = FSMakeFSSpec(vRefNum, appSupportDirID, name, &folderSpec);
-    if (err == noErr) {
-        err = FSpGetDirectoryID(&folderSpec, &dirID, &isDir);
-        if (err != noErr) return err;
-        if (!isDir) return dirNFErr;
-    } else {
-        long newDirID;
-        err = DirCreate(vRefNum, appSupportDirID, name, &newDirID);
-        if (err != noErr) return err;
-        dirID = newDirID;
-    }
+    err = ResolveOrCreateSubfolder(vRefNum, appSupportDirID, name, outDirID);
+    if (err != noErr) return err;
 
     *outVRefNum = vRefNum;
-    *outDirID = dirID;
     return noErr;
 }
 
