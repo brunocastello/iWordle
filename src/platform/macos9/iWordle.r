@@ -89,7 +89,7 @@ resource 'DITL' (200) {
         Button { enabled, "OK" };
 
         { 93, 130, 127, 210 },
-        UserItem { enabled };
+        UserItem { disabled };
     }
 };
 
@@ -113,7 +113,7 @@ resource 'DITL' (201) {
         Button { enabled, "OK" };
 
         { 237, 100, 271, 180 },
-        UserItem { enabled };
+        UserItem { disabled };
     }
 };
 
