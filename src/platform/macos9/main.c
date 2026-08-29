@@ -12,6 +12,7 @@
 #include <Menus.h>
 #include <Fonts.h>
 #include <Dialogs.h>
+#include <Controls.h>
 #include <Events.h>
 #include <ToolUtils.h>
 #include <TextUtils.h>
@@ -468,14 +469,18 @@ pascal Boolean DismissOnEnterFilterProc(DialogPtr dlg, EventRecord *event, short
     (void)itemHit;
 
     /* Take over update handling entirely so PatchButtonCorners() can
-     * run as a guaranteed-last step after DrawDialog (and whatever
-     * separate pass redraws the embedded Button control) is done --
-     * see PatchButtonCorners() for why that ordering matters. */
+     * run as a guaranteed-last step after everything else is drawn.
+     * DrawDialog() alone doesn't render embedded controls -- that's a
+     * separate Control Manager pass (DrawControls()), which is also
+     * why the button was appearing blank until a mouseDown/mouseUp
+     * forced Toolbox-triggered control tracking to draw it for the
+     * first time. */
     if (event->what == updateEvt && (WindowPtr)event->message == (WindowPtr)dlg) {
         WindowPtr w = (WindowPtr)dlg;
         BeginUpdate(w);
         SetPortWindowPort(w);
         DrawDialog(dlg);
+        DrawControls(w);
         PatchButtonCorners(dlg);
         EndUpdate(w);
         return true;
@@ -567,6 +572,7 @@ static void ShowMessage(ConstStr255Param msg)
      * the event stream right before the dialog opened. */
     SetPortWindowPort((WindowPtr)dlg);
     DrawDialog(dlg);
+    DrawControls((WindowPtr)dlg);
     PatchButtonCorners(dlg);
 
     do {
@@ -745,6 +751,7 @@ static void OnAbout(void)
      * the event stream right before the dialog opened. */
     SetPortWindowPort((WindowPtr)dlg);
     DrawDialog(dlg);
+    DrawControls((WindowPtr)dlg);
     PatchButtonCorners(dlg);
 
     do {
