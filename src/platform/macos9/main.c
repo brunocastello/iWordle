@@ -590,9 +590,27 @@ pascal Boolean DismissOnEnterFilterProc3(DialogPtr dlg, EventRecord *event, shor
  * keystrokes and clicks to DITL items, so this proc forwards both to the
  * control by hand: HandleControlKey feeds it every non-Return keystroke,
  * and FindControl/TrackControl handle click-to-position and drag-select
- * the same way the control's own CDEF would if ModalDialog knew about it. */
+ * the same way the control's own CDEF would if ModalDialog knew about it.
+ *
+ * It also takes over updateEvt for this dialog specifically: ModalDialog's
+ * own automatic update handling calls DrawDialog() but never DrawControls(),
+ * so any update event delivered after the initial reveal (there's usually
+ * one queued almost immediately for a freshly-shown window) would repaint
+ * the gray background over the field and never bring it back -- exactly
+ * what "the field flashes and disappears" looks like. Pairing them here
+ * guarantees a DrawControls() always follows a DrawDialog() for this
+ * window, no matter what triggered the update. */
 pascal Boolean NameEntryFilterProc(DialogPtr dlg, EventRecord *event, short *itemHit)
 {
+    if (event->what == updateEvt && (DialogPtr)event->message == dlg) {
+        BeginUpdate((WindowPtr)dlg);
+        DrawDialog(dlg);
+        DrawControls((WindowPtr)dlg);
+        EndUpdate((WindowPtr)dlg);
+        *itemHit = 0;
+        return true;
+    }
+
     if (event->what == keyDown || event->what == autoKey) {
         char c = (char)(event->message & charCodeMask);
         if (c == '\r' || c == 3) {
@@ -961,17 +979,24 @@ static Boolean PromptForPlayerName(Str255 outName)
     GetDialogItem(dlg, 2, &type, &itemH, &fieldBox);
     gNameFieldControl = NewControl((WindowPtr)dlg, &fieldBox, "\p", true,
                                     0, 0, 0, kControlEditTextProc, 0L);
-    if (gNameFieldControl != NULL) {
-        SetControlData(gNameFieldControl, kControlEditTextPart, kControlEditTextTextTag,
-                        gLastPlayerName[0], (Ptr)(gLastPlayerName + 1));
-        SetKeyboardFocus((WindowPtr)dlg, gNameFieldControl, kControlEditTextPart);
-    }
 
     GetDialogItem(dlg, 4, &type, &itemH, &box);
     SetDialogItem(dlg, 4, type, (Handle)NewUserItemUPP(&ButtonFrameProc), &box);
 
     DrawDialog(dlg);
     DrawControls((WindowPtr)dlg);
+
+    /* Prefill and focus only after the dialog is fully drawn once --
+     * doing this beforehand meant the background repaint in DrawDialog()
+     * happened right after the control's very first (focused) draw,
+     * which is what made the field flash and then never come back. */
+    if (gNameFieldControl != NULL) {
+        if (gLastPlayerName[0] > 0) {
+            SetControlData(gNameFieldControl, kControlEditTextPart, kControlEditTextTextTag,
+                            gLastPlayerName[0], (Ptr)(gLastPlayerName + 1));
+        }
+        SetKeyboardFocus((WindowPtr)dlg, gNameFieldControl, kControlEditTextPart);
+    }
 
     item = 0;
     do {
