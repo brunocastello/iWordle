@@ -102,6 +102,7 @@ static Boolean gDone = false;
 
 pascal void MessageContentDrawProc(DialogRef dlg, DialogItemIndex itemNo);
 pascal void AboutContentDrawProc(DialogRef dlg, DialogItemIndex itemNo);
+pascal void ButtonFrameProc(DialogRef dlg, DialogItemIndex itemNo);
 pascal Boolean DismissOnEnterFilterProc(DialogPtr dlg, EventRecord *event, short *itemHit);
 static void PaintFullDialogBackground(DialogRef dlg);
 
@@ -110,7 +111,6 @@ static void GetLetterKeyRect(short row, short idx, Rect *outRect);
 static void GetBackspaceKeyRect(Rect *outRect);
 
 static void DrawBevelRect(const Rect *r, RGBColor fill);
-static void DrawPlatinumButton(const Rect *r, ConstStr255Param label);
 static void DrawCenteredLetter(const Rect *r, char letter, short fontSize, const RGBColor *color);
 static void DrawCenteredStringAt(short centerX, short baselineY, ConstStr255Param s);
 static void DrawTile(short row, short col);
@@ -216,27 +216,24 @@ static void DrawBevelRect(const Rect *r, RGBColor fill)
     FrameRect(r);
 }
 
-/* Hand-drawn rounded push button: the native Button DITL item's CDEF in
- * this toolchain doesn't render correctly against a non-white dialog
- * background (missing frame, white corner pixels where it erases to
- * white internally regardless of the port's BackColor), so we draw the
- * button ourselves to get the real Platinum shape reliably. */
-static void DrawPlatinumButton(const Rect *r, ConstStr255Param label)
+/* Classic "this is the default button" emphasis: a bold rounded frame
+ * drawn around the real native Button item, inset a few pixels out
+ * from its rect. This is the standard Inside Macintosh technique for
+ * marking a dialog's default button and is what distinguishes an OK
+ * button (bordered) from a Cancel button (plain) in a native alert. */
+pascal void ButtonFrameProc(DialogRef dlg, DialogItemIndex itemNo)
 {
-    const short kOval = 12;
+    DialogItemType type;
+    Handle itemH;
+    Rect box;
 
-    SetForeColor(kColorKeyFace);
-    PaintRoundRect(r, kOval, kOval);
+    (void)itemNo;
 
-    SetForeColor(kColorBorder);
-    FrameRoundRect(r, kOval, kOval);
-
-    SetForeColor(kColorBlack);
-    TextFont(kFontGeneva);
-    TextFace(bold);
-    TextSize(12);
-    DrawCenteredStringAt(r->left + (r->right - r->left) / 2,
-                          r->top + (r->bottom - r->top) / 2 + 4, label);
+    GetDialogItem(dlg, 2, &type, &itemH, &box);
+    InsetRect(&box, -4, -4);
+    PenSize(3, 3);
+    FrameRoundRect(&box, 16, 16);
+    PenNormal();
 }
 
 static void DrawCenteredLetter(const Rect *r, char letter, short fontSize, const RGBColor *color)
@@ -484,9 +481,6 @@ pascal void MessageContentDrawProc(DialogRef dlg, DialogItemIndex itemNo)
     TextSize(11);
     DrawCenteredStringAt(box.left + (box.right - box.left) / 2,
                           box.top + (box.bottom - box.top) / 2 + 4, gMessageText);
-
-    GetDialogItem(dlg, 2, &type, &itemH, &box);
-    DrawPlatinumButton(&box, "\pOK");
 }
 
 static void ShowMessage(ConstStr255Param msg)
@@ -504,6 +498,9 @@ static void ShowMessage(ConstStr255Param msg)
 
     GetDialogItem(dlg, 1, &type, &itemH, &box);
     SetDialogItem(dlg, 1, type, (Handle)NewUserItemUPP(&MessageContentDrawProc), &box);
+
+    GetDialogItem(dlg, 3, &type, &itemH, &box);
+    SetDialogItem(dlg, 3, type, (Handle)NewUserItemUPP(&ButtonFrameProc), &box);
 
     do {
         ModalDialog(NewModalFilterUPP(&DismissOnEnterFilterProc), &item);
@@ -538,56 +535,52 @@ pascal void AboutContentDrawProc(DialogRef dlg, DialogItemIndex itemNo)
     SetRect(&iconRect, midX - 16, box.top + 6, midX + 16, box.top + 38);
     PlotIconID(&iconRect, atNone, ttNone, 128);
 
-    /* Classic About-box convention: the app name is set in the bold
-     * System font, while body/credit lines use Geneva -- two distinct
-     * typefaces, not just two sizes of one. Charcoal isn't a fixed
-     * classic font ID (it's a later TrueType addition), so it has to
-     * be looked up by name; GetFNum() falls back to systemFont (0) if
-     * it isn't installed. */
+    /* Charcoal (Plain) for the three emphasis lines, Geneva (Plain) for
+     * everything else -- two distinct typefaces, not just two sizes of
+     * one. Charcoal isn't a fixed classic font ID (it's a later
+     * TrueType addition), so it has to be looked up by name; GetFNum()
+     * falls back to systemFont (0) if it isn't installed. */
     {
         Str255 fontName;
         short charcoalID;
         CStrToPStr(fontName, "Charcoal");
         GetFNum(fontName, &charcoalID);
+
+        TextFace(normal);
+
         TextFont(charcoalID);
+        TextSize(12);
+        CStrToPStr(s, "iWordle 1.0");
+        DrawCenteredStringAt(midX, box.top + 56, s);
+
+        TextFont(kFontGeneva);
+        TextSize(10);
+        CStrToPStr(s, "A native Wordle clone for Mac OS 9");
+        DrawCenteredStringAt(midX, box.top + 76, s);
+
+        TextFont(charcoalID);
+        TextSize(12);
+        CStrToPStr(s, "Bruno Castello");
+        DrawCenteredStringAt(midX, box.top + 104, s);
+
+        TextFont(kFontGeneva);
+        TextSize(10);
+        CStrToPStr(s, "bfcastello@hotmail.com");
+        DrawCenteredStringAt(midX, box.top + 124, s);
+
+        TextFont(charcoalID);
+        TextSize(12);
+        CStrToPStr(s, "Engineer: Claude Sonnet 5");
+        DrawCenteredStringAt(midX, box.top + 152, s);
+
+        TextFont(kFontGeneva);
+        TextSize(10);
+        CStrToPStr(s, "\xA9 Castello Designs, 2026");
+        DrawCenteredStringAt(midX, box.top + 180, s);
+
+        CStrToPStr(s, "Built with Retro68");
+        DrawCenteredStringAt(midX, box.top + 200, s);
     }
-    TextFace(bold);
-    TextSize(12);
-    CStrToPStr(s, "iWordle 1.0");
-    DrawCenteredStringAt(midX, box.top + 56, s);
-
-    TextFont(kFontGeneva);
-
-    TextFace(normal);
-    TextSize(10);
-    CStrToPStr(s, "A native Wordle clone for Mac OS 9");
-    DrawCenteredStringAt(midX, box.top + 76, s);
-
-    TextFace(bold);
-    TextSize(12);
-    CStrToPStr(s, "Bruno Castello");
-    DrawCenteredStringAt(midX, box.top + 104, s);
-
-    TextFace(normal);
-    TextSize(10);
-    CStrToPStr(s, "bfcastello@hotmail.com");
-    DrawCenteredStringAt(midX, box.top + 124, s);
-
-    TextFace(bold);
-    TextSize(12);
-    CStrToPStr(s, "Engineer: Claude Sonnet 5");
-    DrawCenteredStringAt(midX, box.top + 152, s);
-
-    TextFace(normal);
-    TextSize(10);
-    CStrToPStr(s, "\xA9 Castello Designs, 2026");
-    DrawCenteredStringAt(midX, box.top + 180, s);
-
-    CStrToPStr(s, "Built with Retro68");
-    DrawCenteredStringAt(midX, box.top + 200, s);
-
-    GetDialogItem(dlg, 2, &type, &itemH, &box);
-    DrawPlatinumButton(&box, "\pOK");
 }
 
 /* ---------------------------------------------------------------------- */
@@ -674,6 +667,9 @@ static void OnAbout(void)
 
     GetDialogItem(dlg, 1, &type, &itemH, &box);
     SetDialogItem(dlg, 1, type, (Handle)NewUserItemUPP(&AboutContentDrawProc), &box);
+
+    GetDialogItem(dlg, 3, &type, &itemH, &box);
+    SetDialogItem(dlg, 3, type, (Handle)NewUserItemUPP(&ButtonFrameProc), &box);
 
     do {
         ModalDialog(NewModalFilterUPP(&DismissOnEnterFilterProc), &item);

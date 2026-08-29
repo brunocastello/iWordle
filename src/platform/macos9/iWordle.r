@@ -3,20 +3,19 @@
  * message dialog (New Game confirm, Give Up, Win / Lose), and an About
  * dialog.
  *
- * Both are DLOG/DITL dialogs with two UserItems each, no native
- * controls: item 1 paints the Platinum gray background (Retro68's
- * headers don't expose the Appearance Manager, so there's no
- * SetThemeWindowBackground to ask for it) and draws the dialog's text
- * content by hand; item 2 is where the OK button's rect lives, drawn
- * by item 1's proc via DrawPlatinumButton() since the native Button
- * DITL item's CDEF in this toolchain doesn't render correctly against
- * a non-white background (missing frame, white corner pixels). Item 2
- * itself is left with no draw proc assigned, so the Dialog Manager
- * never draws anything for it and can't paint over the button -- it
- * only exists so ModalDialog's hit-testing has a clickable rect there.
- * A modal filter proc remaps Return/Enter to item 2, since the Dialog
- * Manager's default-item handling is hardwired to item 1 regardless of
- * what's actually in it.
+ * Both are DLOG/DITL dialogs with three items: item 1 is a UserItem
+ * that paints the Platinum gray background (Retro68's headers don't
+ * expose the Appearance Manager, so there's no SetThemeWindowBackground
+ * to ask for it) and draws the dialog's text content by hand; item 2 is
+ * a real native Button, "OK"; item 3 is a UserItem that draws the
+ * classic bold rounded frame around item 2 to mark it as the default
+ * button (the standard Inside Macintosh technique -- the same one that
+ * distinguishes a dialog's OK button from a plain Cancel button).
+ * Drawing that frame in its own item, on top, after the native button
+ * has drawn itself, is what keeps it from being erased by the button's
+ * own redraw. Because Return/Enter is hardwired to item 1 by Dialog
+ * Manager convention regardless of item type, a filter proc remaps it
+ * to item 2 instead.
  */
 
 #include "Types.r"
@@ -89,6 +88,9 @@ resource 'DITL' (200) {
         UserItem { enabled };
 
         { 98, 135, 122, 205 },
+        Button { enabled, "OK" };
+
+        { 93, 130, 127, 210 },
         UserItem { enabled };
     }
 };
@@ -110,6 +112,9 @@ resource 'DITL' (201) {
         UserItem { enabled };
 
         { 224, 105, 248, 175 },
+        Button { enabled, "OK" };
+
+        { 219, 100, 253, 180 },
         UserItem { enabled };
     }
 };
