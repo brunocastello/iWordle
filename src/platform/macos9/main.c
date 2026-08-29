@@ -619,6 +619,11 @@ pascal Boolean NameEntryFilterProc(DialogPtr dlg, EventRecord *event, short *ite
         }
         if (gNameFieldControl != NULL) {
             short keyCode = (short)((event->message & keyCodeMask) >> 8);
+            /* HandleControlKey draws into the current port as it inserts
+             * the character, so the port has to be the dialog's own --
+             * ModalDialog doesn't guarantee that's already the case when
+             * it hands us a keyDown. */
+            SetPortWindowPort((WindowPtr)dlg);
             HandleControlKey(gNameFieldControl, keyCode, c, event->modifiers);
         }
         *itemHit = 0;
