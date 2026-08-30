@@ -1,0 +1,81 @@
+name: Build (Mac OS X PowerPC / Carbon)
+
+on:
+  push:
+    paths:
+      - 'src/core/**'
+      - 'src/platform/macosx/**'
+      - '.github/workflows/build-macosx.yml'
+  pull_request:
+    paths:
+      - 'src/core/**'
+      - 'src/platform/macosx/**'
+      - '.github/workflows/build-macosx.yml'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Compile Rez resources (Retro68's Rez, flat data-fork output)
+        run: |
+          set -euo pipefail
+          mkdir -p build
+          docker run --rm \
+            -v "${{ github.workspace }}:/root/iWordle" \
+            -w /root/iWordle \
+            ghcr.io/autc04/retro68 \
+            /Retro68-build/toolchain/bin/Rez -DTARGET_API_MAC_CARBON=1 \
+              src/platform/macosx/iWordle.r src/platform/macosx/icons.r \
+              -I /Retro68-build/toolchain/powerpc-apple-macos/RIncludes \
+              -o build/iWordle.rsrc
+
+      - name: Compile and link (powerpc-apple-darwin8 cross-compiler)
+        run: |
+          set -euo pipefail
+          docker run --rm \
+            -v "${{ github.workspace }}:/root/iWordle" \
+            -w /root/iWordle \
+            -i ghcr.io/variantxyz/gcc-powerpc-apple-darwin8:build-gcc-14.2-MacOSXSDK10.4u /bin/bash <<'EOF'
+          set -euo pipefail
+          SDK=/usr/local/MacOSX10.4u.sdk
+          CC=powerpc-apple-darwin8-gcc
+
+          echo "--- toolchain sanity check ---"
+          ls /usr/local/bin | grep powerpc-apple-darwin8 || true
+          ls "$SDK" || (echo "SDK not found at $SDK" && find /usr/local -maxdepth 1 -iname '*sdk*' && exit 1)
+
+          mkdir -p build
+          CFLAGS="-arch ppc -isysroot $SDK -mmacosx-version-min=10.4 -Isrc/core -Wall"
+
+          $CC $CFLAGS -c src/core/wordle_engine.c -o build/wordle_engine.o
+          $CC $CFLAGS -c src/core/wordle_stats.c -o build/wordle_stats.o
+          $CC $CFLAGS -c src/platform/macosx/main.c -o build/main.o
+
+          $CC -arch ppc -isysroot "$SDK" -mmacosx-version-min=10.4 \
+            build/wordle_engine.o build/wordle_stats.o build/main.o \
+            -framework Carbon -o build/iWordle
+          EOF
+
+      - name: Assemble .app bundle
+        run: |
+          set -euo pipefail
+          APP=package/iWordle.app
+          mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
+          cp build/iWordle "$APP/Contents/MacOS/iWordle"
+          chmod +x "$APP/Contents/MacOS/iWordle"
+          cp build/iWordle.rsrc "$APP/Contents/Resources/iWordle.rsrc"
+          cp src/platform/macosx/Info.plist "$APP/Contents/Info.plist"
+          cp src/platform/macosx/PkgInfo "$APP/Contents/PkgInfo"
+          cd package
+          zip -r -y iWordle-mac-os-x-ppc.zip iWordle.app
+
+      - name: Upload app bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: iWordle-mac-os-x-ppc
+          path: package/iWordle-mac-os-x-ppc.zip
+          if-no-files-found: error
