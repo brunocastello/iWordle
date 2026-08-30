@@ -1,0 +1,40 @@
+name: One-off - Purge committed SDK from git history
+
+# Manual, one-time cleanup: third_party/MacOSX10.4u.sdk was committed while
+# this repo was private and is no longer needed now that the OS X build
+# uses ghcr.io/variantxyz/gcc-powerpc-apple-darwin8 (a public image that
+# already bundles its own SDK). Deleting the folder in a new commit isn't
+# enough to make the repo safe to go public -- it would still be sitting
+# in old commits. This rewrites all history to strip that path entirely,
+# then force-pushes the rewritten branch and tags.
+#
+# Runs entirely on the GitHub-hosted runner; nothing is installed or run
+# on any local machine.
+
+on:
+  workflow_dispatch:
+
+jobs:
+  purge:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout full history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Install git-filter-repo
+        run: pip install git-filter-repo
+
+      - name: Purge SDK path from all history
+        run: |
+          git filter-repo --force --path third_party/MacOSX10.4u.sdk --invert-paths
+
+      - name: Force-push rewritten history
+        run: |
+          git remote add rewrite "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git"
+          git push rewrite --force --all
+          git push rewrite --force --tags
