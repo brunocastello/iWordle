@@ -57,7 +57,16 @@ jobs:
           ls "$SDK" || (echo "SDK not found at $SDK" && find /usr/local -maxdepth 1 -iname '*sdk*' && exit 1)
 
           mkdir -p build
-          CFLAGS="-arch ppc -isysroot $SDK -mmacosx-version-min=10.4 -Isrc/core -Wall"
+          # -fpascal-strings: this codebase relies throughout on GCC's
+          # "\p" Pascal-string literal extension (auto length-prefix,
+          # e.g. "\pOK") for anything passed to Str255-based Toolbox
+          # calls (DrawString, NewControl titles, etc.). Retro68's own
+          # patched GCC enables this by default for its target; this
+          # more vanilla GCC-14 cross-compiler doesn't, so every such
+          # literal was silently compiling as a plain C string with no
+          # length byte at all -- garbled/overlapping dialog text and a
+          # broken button title were both this exact bug.
+          CFLAGS="-arch ppc -isysroot $SDK -mmacosx-version-min=10.4 -fpascal-strings -Isrc/core -Wall"
 
           $CC $CFLAGS -c src/core/wordle_engine.c -o build/wordle_engine.o
           $CC $CFLAGS -c src/core/wordle_stats.c -o build/wordle_stats.o
