@@ -88,8 +88,13 @@ jobs:
       - name: Create .dmg
         run: |
           set -euo pipefail
-          dd if=/dev/zero of=package/iWordle.hfs bs=1M count=8
-          hfsplus package/iWordle.hfs create "iWordle"
+          # This tool has no "create" verb -- it only operates on an
+          # already-valid HFS+ image, so every real use of it (including
+          # its own test suite) starts from this pre-built empty
+          # template and grows it, rather than formatting one from
+          # scratch.
+          cp /tmp/libdmg-hfsplus/test/empty.hfs package/iWordle.hfs
+          hfsplus package/iWordle.hfs grow 8388608
           hfsplus package/iWordle.hfs addall package/iWordle.app /iWordle.app
           dmg build package/iWordle.hfs package/iWordle.dmg
 
