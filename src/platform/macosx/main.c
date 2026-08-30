@@ -16,6 +16,8 @@
 
 #include <string.h>
 #include <ctype.h>
+#include <stdio.h>
+#include <stdlib.h>
 
 #include "wordle_engine.h"
 #include "wordle_stats.h"
@@ -1356,8 +1358,30 @@ static void RunEventLoop(void)
 /* Entry point                                                             */
 /* ---------------------------------------------------------------------- */
 
+/* Temporary bring-up diagnostics: appends to ~/Desktop/iWordle-debug.log
+ * so failures in the resource-loading path below are visible without a
+ * debugger attached. Remove once the Mac OS X port's window/menu are
+ * confirmed working end to end. */
+static void DebugLog(const char *msg)
+{
+    const char *home = getenv("HOME");
+    char path[1024];
+    FILE *f;
+
+    if (home == NULL) return;
+    snprintf(path, sizeof(path), "%s/Desktop/iWordle-debug.log", home);
+    f = fopen(path, "a");
+    if (f == NULL) return;
+    fprintf(f, "%s\n", msg);
+    fclose(f);
+}
+
 int main(void)
 {
+    char logbuf[256];
+
+    DebugLog("=== iWordle launch ===");
+
     /* Unlike the classic Mac OS 9 build, a bundled Mach-O Carbon app on
      * OS X doesn't get its Contents/Resources/iWordle.rsrc mapped into
      * the Resource Manager for free -- without this, GetNewMBar/
@@ -1368,17 +1392,27 @@ int main(void)
      * automatic bundle/executable-name-matching convention. */
     {
         CFBundleRef mainBundle = CFBundleGetMainBundle();
-        CFURLRef rsrcURL = (mainBundle != NULL)
-            ? CFBundleCopyResourceURL(mainBundle, CFSTR("iWordle"), CFSTR("rsrc"), NULL)
-            : NULL;
+        CFURLRef rsrcURL;
 
-        if (rsrcURL != NULL) {
-            FSRef rsrcRef;
-            if (CFURLGetFSRef(rsrcURL, &rsrcRef)) {
-                SInt16 refNum;
-                FSOpenResourceFile(&rsrcRef, 0, NULL, fsRdPerm, &refNum);
+        if (mainBundle == NULL) {
+            DebugLog("CFBundleGetMainBundle() = NULL");
+        } else {
+            rsrcURL = CFBundleCopyResourceURL(mainBundle, CFSTR("iWordle"), CFSTR("rsrc"), NULL);
+            if (rsrcURL == NULL) {
+                DebugLog("CFBundleCopyResourceURL(iWordle.rsrc) = NULL (not found in bundle)");
+            } else {
+                FSRef rsrcRef;
+                if (!CFURLGetFSRef(rsrcURL, &rsrcRef)) {
+                    DebugLog("CFURLGetFSRef() failed");
+                } else {
+                    SInt16 refNum = 0;
+                    OSStatus err = FSOpenResourceFile(&rsrcRef, 0, NULL, fsRdPerm, &refNum);
+                    snprintf(logbuf, sizeof(logbuf), "FSOpenResourceFile() err=%d refNum=%d",
+                             (int)err, (int)refNum);
+                    DebugLog(logbuf);
+                }
+                CFRelease(rsrcURL);
             }
-            CFRelease(rsrcURL);
         }
     }
 
@@ -1396,6 +1430,9 @@ int main(void)
 
     {
         Handle mbar = GetNewMBar(128);
+        snprintf(logbuf, sizeof(logbuf), "GetNewMBar(128) = %p, ResError=%d",
+                 (void *)mbar, (int)ResError());
+        DebugLog(logbuf);
         if (mbar != NULL) {
             SetMenuBar(mbar);
             DisposeHandle(mbar);
@@ -1404,6 +1441,9 @@ int main(void)
     DrawMenuBar();
 
     gWindow = GetNewCWindow(128, NULL, (WindowPtr)-1);
+    snprintf(logbuf, sizeof(logbuf), "GetNewCWindow(128) = %p, ResError=%d",
+             (void *)gWindow, (int)ResError());
+    DebugLog(logbuf);
     ShowWindow(gWindow);
 
     LoadStats();
