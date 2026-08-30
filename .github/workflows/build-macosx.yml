@@ -29,12 +29,16 @@ jobs:
             -w /root/iWordle \
             ghcr.io/autc04/retro68 /bin/bash -c '
               set -euo pipefail
-              /Retro68-build/toolchain/bin/Rez -d -DTARGET_API_MAC_CARBON=1 \
+              /Retro68-build/toolchain/bin/Rez -DTARGET_API_MAC_CARBON=1 \
                 src/platform/macosx/iWordle.r src/platform/macosx/icons.r \
                 -I /Retro68-build/toolchain/powerpc-apple-macos/RIncludes \
                 -o build/iWordle.rsrc
-              echo "--- Rez output ---"
-              ls -la build/iWordle.rsrc
+              # On Linux (no real resource forks), Rez writes a plain
+              # ".rsrc"-named output using BasiliskIIs sidecar
+              # convention: build/iWordle.rsrc itself only gets the
+              # (empty) data fork, and the actual resource bytes land
+              # in this hidden sibling file instead.
+              cp build/.rsrc/iWordle.rsrc build/iWordle.rsrc
             '
 
       - name: Compile and link (powerpc-apple-darwin8 cross-compiler)
