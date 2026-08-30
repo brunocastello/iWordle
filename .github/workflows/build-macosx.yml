@@ -27,11 +27,15 @@ jobs:
           docker run --rm \
             -v "${{ github.workspace }}:/root/iWordle" \
             -w /root/iWordle \
-            ghcr.io/autc04/retro68 \
-            /Retro68-build/toolchain/bin/Rez -DTARGET_API_MAC_CARBON=1 \
-              src/platform/macosx/iWordle.r src/platform/macosx/icons.r \
-              -I /Retro68-build/toolchain/powerpc-apple-macos/RIncludes \
-              -o build/iWordle.rsrc
+            ghcr.io/autc04/retro68 /bin/bash -c '
+              set -euo pipefail
+              /Retro68-build/toolchain/bin/Rez -d -DTARGET_API_MAC_CARBON=1 \
+                src/platform/macosx/iWordle.r src/platform/macosx/icons.r \
+                -I /Retro68-build/toolchain/powerpc-apple-macos/RIncludes \
+                -o build/iWordle.rsrc
+              echo "--- Rez output ---"
+              ls -la build/iWordle.rsrc
+            '
 
       - name: Compile and link (powerpc-apple-darwin8 cross-compiler)
         run: |
