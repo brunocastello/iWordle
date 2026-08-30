@@ -574,16 +574,11 @@ pascal void MessageContentDrawProc(DialogRef dlg, DialogItemIndex itemNo)
     SetForeColor(kColorBlack);
     PenNormal();
 
-    /* Charcoal 12pt -- same font and size as the menu bar. */
-    {
-        Str255 fontName;
-        short charcoalID;
-        CStrToPStr(fontName, "Charcoal");
-        GetFNum(fontName, &charcoalID);
-        TextFont(charcoalID);
-    }
-    TextFace(normal);
-    TextSize(12);
+    /* Ask the Appearance Manager for the native system font instead of
+     * hardcoding a name -- UseThemeFont() resolves to whatever this build
+     * is actually running under (Lucida Grande, or whatever else a given
+     * 10.0-10.5 install shipped) without us assuming which one. */
+    UseThemeFont(kThemeSystemFont, smSystemScript);
     DrawCenteredStringAt(box.left + (box.right - box.left) / 2,
                           box.top + (box.bottom - box.top) / 2 + 4, gMessageText);
 }
@@ -637,46 +632,34 @@ pascal void AboutContentDrawProc(DialogRef dlg, DialogItemIndex itemNo)
     SetRect(&iconRect, midX - 16, box.top + 14, midX + 16, box.top + 46);
     PlotIconID(&iconRect, atNone, ttNone, 128);
 
-    /* Charcoal (Plain) for the three emphasis lines, Geneva (Plain) for
-     * everything else -- two distinct typefaces, not just two sizes of
-     * one. Charcoal isn't a fixed classic font ID (it's a later
-     * TrueType addition), so it has to be looked up by name; GetFNum()
-     * falls back to systemFont (0) if it isn't installed. */
+    /* Emphasized system font for the three heading lines, plain small
+     * system font for everything else -- hierarchy comes from weight and
+     * size on the one native font, not from mixing font families. Both
+     * are resolved through the Appearance Manager rather than hardcoding
+     * a font name, so this tracks whatever the running system actually
+     * uses instead of assuming Lucida Grande specifically. */
     {
-        Str255 fontName;
-        short charcoalID;
-        CStrToPStr(fontName, "Charcoal");
-        GetFNum(fontName, &charcoalID);
-
-        TextFace(normal);
-
-        TextFont(charcoalID);
-        TextSize(12);
+        UseThemeFont(kThemeEmphasizedSystemFont, smSystemScript);
         CStrToPStr(s, "iWordle 1.0");
         DrawCenteredStringAt(midX, box.top + 64, s);
 
-        TextFont(kFontGeneva);
-        TextSize(10);
+        UseThemeFont(kThemeSmallSystemFont, smSystemScript);
         CStrToPStr(s, "A native Wordle clone for Mac OS X");
         DrawCenteredStringAt(midX, box.top + 84, s);
 
-        TextFont(charcoalID);
-        TextSize(12);
+        UseThemeFont(kThemeEmphasizedSystemFont, smSystemScript);
         CStrToPStr(s, "Bruno Castello");
         DrawCenteredStringAt(midX, box.top + 112, s);
 
-        TextFont(kFontGeneva);
-        TextSize(10);
+        UseThemeFont(kThemeSmallSystemFont, smSystemScript);
         CStrToPStr(s, "bfcastello@hotmail.com");
         DrawCenteredStringAt(midX, box.top + 132, s);
 
-        TextFont(charcoalID);
-        TextSize(12);
+        UseThemeFont(kThemeEmphasizedSystemFont, smSystemScript);
         CStrToPStr(s, "Engineer: Claude Sonnet 5");
         DrawCenteredStringAt(midX, box.top + 160, s);
 
-        TextFont(kFontGeneva);
-        TextSize(10);
+        UseThemeFont(kThemeSmallSystemFont, smSystemScript);
         CStrToPStr(s, "\xA9 Castello Designs, 2026");
         DrawCenteredStringAt(midX, box.top + 188, s);
     }
@@ -811,15 +794,7 @@ static void DrawNameWindowContent(WindowPtr w)
 
     SetForeColor(kColorBlack);
     PenNormal();
-    {
-        Str255 fontName;
-        short charcoalID;
-        CStrToPStr(fontName, "Charcoal");
-        GetFNum(fontName, &charcoalID);
-        TextFont(charcoalID);
-    }
-    TextFace(normal);
-    TextSize(12);
+    UseThemeFont(kThemeSystemFont, smSystemScript);
     DrawCenteredStringAt((windowRect.right - windowRect.left) / 2, 34, "\016Who's playing?");
 }
 
@@ -978,9 +953,7 @@ pascal void StatsContentDrawProc(DialogRef dlg, DialogItemIndex itemNo)
     SetForeColor(kColorBlack);
     PenNormal();
 
-    TextFont(kFontGeneva);
-    TextFace(bold);
-    TextSize(12);
+    UseThemeFont(kThemeEmphasizedSystemFont, smSystemScript);
     MoveTo(box.left + 16, box.top + 20);
     DrawString("\004Name");
     MoveTo(box.left + 220, box.top + 20);
@@ -995,8 +968,7 @@ pascal void StatsContentDrawProc(DialogRef dlg, DialogItemIndex itemNo)
     MoveTo(box.left + 10, box.top + 26);
     LineTo(box.right - 10, box.top + 26);
 
-    TextFace(normal);
-    TextSize(11);
+    UseThemeFont(kThemeSmallSystemFont, smSystemScript);
 
     if (gStats.playerCount == 0) {
         MoveTo(box.left + 16, box.top + 50);
