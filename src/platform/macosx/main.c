@@ -1360,13 +1360,25 @@ int main(void)
 {
     /* Unlike the classic Mac OS 9 build, a bundled Mach-O Carbon app on
      * OS X doesn't get its Contents/Resources/iWordle.rsrc mapped into
-     * the Resource Manager automatically -- without this call,
-     * GetNewMBar/GetNewCWindow/GetNewDialog below all silently return
-     * NULL and the app launches with no window and no menu at all. */
+     * the Resource Manager for free -- without this, GetNewMBar/
+     * GetNewCWindow/GetNewDialog below all silently return NULL and the
+     * app launches with no window and no menu at all. Locate the file
+     * explicitly by name via CFBundleCopyResourceURL and open it
+     * directly with FSOpenResourceFile, rather than relying on any
+     * automatic bundle/executable-name-matching convention. */
     {
         CFBundleRef mainBundle = CFBundleGetMainBundle();
-        if (mainBundle != NULL) {
-            CFBundleOpenBundleResourceMap(mainBundle);
+        CFURLRef rsrcURL = (mainBundle != NULL)
+            ? CFBundleCopyResourceURL(mainBundle, CFSTR("iWordle"), CFSTR("rsrc"), NULL)
+            : NULL;
+
+        if (rsrcURL != NULL) {
+            FSRef rsrcRef;
+            if (CFURLGetFSRef(rsrcURL, &rsrcRef)) {
+                SInt16 refNum;
+                FSOpenResourceFile(&rsrcRef, 0, NULL, fsRdPerm, &refNum);
+            }
+            CFRelease(rsrcURL);
         }
     }
 
