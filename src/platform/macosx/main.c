@@ -105,10 +105,7 @@ static ControlHandle gNameOKControl = NULL;
 pascal void MessageContentDrawProc(DialogRef dlg, DialogItemIndex itemNo);
 pascal void AboutContentDrawProc(DialogRef dlg, DialogItemIndex itemNo);
 pascal void StatsContentDrawProc(DialogRef dlg, DialogItemIndex itemNo);
-pascal Boolean DismissOnEnterFilterProc(DialogPtr dlg, EventRecord *event, short *itemHit);
-pascal Boolean DismissOnEnterFilterProc3(DialogPtr dlg, EventRecord *event, short *itemHit);
-pascal void ButtonFrameProc(DialogRef dlg, DialogItemIndex itemNo);
-static void PaintFullDialogBackground(DialogRef dlg);
+static void ShowDialogWithDefaultButton(DialogPtr dlg, short defaultItem);
 
 static void DrawNameWindowContent(WindowPtr w);
 
@@ -528,88 +525,33 @@ static void SaveStats(void)
 /* ---------------------------------------------------------------------- */
 /* Shared modal helpers                                                    */
 /*                                                                        */
-/* Real Apple headers do expose the Appearance Manager here (unlike       */
-/* Retro68's), but this keeps the same hand-drawn approach as the Mac OS  */
-/* 9 build rather than switching to SetThemeWindowBackground, so both     */
-/* front ends stay visually and structurally identical -- item 1 in both  */
-/* dialogs below is a UserItem that paints the WHOLE dialog window gray   */
-/* (not just its own item rect) and draws that dialog's text content by   */
-/* hand. Item 2 is a real native Button, "OK". Item 3 draws the classic   */
-/* bold rounded frame around it that marks it as the dialog's default     */
-/* button -- the same technique that distinguishes an OK button from a    */
-/* plain Cancel button in a native alert. SetDialogDefaultItem() was      */
-/* tried as a way to get that emphasis for free from the Dialog Manager   */
-/* instead, but rendered far worse (the button barely appeared at all)    */
-/* than this hand-drawn frame does, so this is the version we're keeping. */
-/* There's a known remaining cosmetic issue where the button's own        */
-/* corner pixels can show white against our gray background; the frame    */
-/* itself, which is what's actually being asked for, is unaffected by     */
-/* that and renders correctly. Because Return/Enter is hardwired to item  */
-/* 1 by Dialog Manager convention regardless of item type, this filter     */
-/* proc remaps it to item 2 instead.                                      */
+/* Unlike the Mac OS 9 build (Retro68's headers have no Appearance        */
+/* Manager at all), real Mac OS X Carbon draws a genuinely native Aqua    */
+/* dialog background and default-button glow for free -- so this front   */
+/* end doesn't hand-paint a background or hand-draw a default-button      */
+/* ring the way OS 9 has to. Item 1's UserItem draw procs below only      */
+/* draw their own text/icon/table content, leaving the dialog's real      */
+/* background untouched. SetDialogDefaultItem() marks the given item as   */
+/* both the pulsing-blue-glow default button AND the Return/Enter target, */
+/* which is the standard, HIG-correct replacement for both the hand-drawn */
+/* ring and the custom Return-key filter procs OS 9 needs.                */
 /* ---------------------------------------------------------------------- */
 
-pascal Boolean DismissOnEnterFilterProc(DialogPtr dlg, EventRecord *event, short *itemHit)
+/* GetNewDialog() on real Carbon doesn't reliably paint its native
+ * controls on first show -- without an explicit extra draw here, the OK/
+ * Clear buttons stay invisible until the user's first click forces a
+ * redraw. Draw1Control-ing the default button directly closes that gap
+ * regardless of the exact cause. */
+static void ShowDialogWithDefaultButton(DialogPtr dlg, short defaultItem)
 {
-    (void)dlg;
+    ControlRef defaultControl;
 
-    if (event->what == keyDown || event->what == autoKey) {
-        char c = (char)(event->message & charCodeMask);
-        if (c == '\r' || c == 3) {
-            *itemHit = 2;
-            return true;
-        }
+    SetDialogDefaultItem(dlg, defaultItem);
+    DrawDialog(dlg);
+    DrawControls((WindowPtr)dlg);
+    if (GetDialogItemAsControl(dlg, defaultItem, &defaultControl) == noErr) {
+        Draw1Control(defaultControl);
     }
-    return false;
-}
-
-/* Same remap as above, for the statistics dialog, whose default button
- * sits at item 3 instead of item 2 (the Clear button comes first). */
-pascal Boolean DismissOnEnterFilterProc3(DialogPtr dlg, EventRecord *event, short *itemHit)
-{
-    (void)dlg;
-
-    if (event->what == keyDown || event->what == autoKey) {
-        char c = (char)(event->message & charCodeMask);
-        if (c == '\r' || c == 3) {
-            *itemHit = 3;
-            return true;
-        }
-    }
-    return false;
-}
-
-/* Every dialog here keeps its default button immediately followed by the
- * UserItem that rings it, so the ring's own item number minus one always
- * lands on the button -- this makes the same proc reusable regardless of
- * how many other items (EditText, other buttons) come before it. */
-pascal void ButtonFrameProc(DialogRef dlg, DialogItemIndex itemNo)
-{
-    DialogItemType type;
-    Handle itemH;
-    Rect box;
-
-    GetDialogItem(dlg, itemNo - 1, &type, &itemH, &box);
-
-    SetForeColor(kColorBlack);
-    InsetRect(&box, -4, -4);
-    PenSize(3, 3);
-    FrameRoundRect(&box, 16, 16);
-    PenNormal();
-}
-
-static void PaintFullDialogBackground(DialogRef dlg)
-{
-    Rect windowRect;
-
-    GetPortBounds(GetWindowPort((WindowPtr)dlg), &windowRect);
-    /* BackColor matters here, not just ForeColor: native controls (the
-     * OK button) erase their own rounded corners using the port's
-     * BackColor, so leaving it at the default white is what caused
-     * white corner pixels around the button before. */
-    SetBackColor(kColorWindowBG);
-    SetForeColor(kColorWindowBG);
-    PaintRect(&windowRect);
 }
 
 /* ---------------------------------------------------------------------- */
@@ -627,8 +569,6 @@ pascal void MessageContentDrawProc(DialogRef dlg, DialogItemIndex itemNo)
     Rect box;
 
     (void)itemNo;
-
-    PaintFullDialogBackground(dlg);
 
     GetDialogItem(dlg, 1, &type, &itemH, &box);
     SetForeColor(kColorBlack);
@@ -664,14 +604,10 @@ static void ShowMessage(ConstStr255Param msg)
     GetDialogItem(dlg, 1, &type, &itemH, &box);
     SetDialogItem(dlg, 1, type, (Handle)NewUserItemUPP(&MessageContentDrawProc), &box);
 
-    GetDialogItem(dlg, 3, &type, &itemH, &box);
-    SetDialogItem(dlg, 3, type, (Handle)NewUserItemUPP(&ButtonFrameProc), &box);
-
-    DrawDialog(dlg);
-    DrawControls((WindowPtr)dlg);
+    ShowDialogWithDefaultButton(dlg, 2);
 
     do {
-        ModalDialog(NewModalFilterUPP(&DismissOnEnterFilterProc), &item);
+        ModalDialog(NULL, &item);
     } while (item != 2);
 
     DisposeDialog(dlg);
@@ -691,8 +627,6 @@ pascal void AboutContentDrawProc(DialogRef dlg, DialogItemIndex itemNo)
     short midX;
 
     (void)itemNo;
-
-    PaintFullDialogBackground(dlg);
 
     GetDialogItem(dlg, 1, &type, &itemH, &box);
     midX = box.left + (box.right - box.left) / 2;
@@ -839,14 +773,10 @@ static void OnAbout(void)
     GetDialogItem(dlg, 1, &type, &itemH, &box);
     SetDialogItem(dlg, 1, type, (Handle)NewUserItemUPP(&AboutContentDrawProc), &box);
 
-    GetDialogItem(dlg, 3, &type, &itemH, &box);
-    SetDialogItem(dlg, 3, type, (Handle)NewUserItemUPP(&ButtonFrameProc), &box);
-
-    DrawDialog(dlg);
-    DrawControls((WindowPtr)dlg);
+    ShowDialogWithDefaultButton(dlg, 2);
 
     do {
-        ModalDialog(NewModalFilterUPP(&DismissOnEnterFilterProc), &item);
+        ModalDialog(NULL, &item);
     } while (item != 2);
 
     DisposeDialog(dlg);
@@ -866,15 +796,18 @@ static void OnAbout(void)
  * runs a plain WaitNextEvent loop with real native controls with none of
  * that friction, so this reuses that same architecture instead of
  * continuing to fight ModalDialog for a case it wasn't built for. */
+/* No hand-painted background or hand-drawn default-button ring here --
+ * this is a real Carbon dBoxProc window on OS X, which already draws
+ * its own native Aqua dialog background; PromptForPlayerName() marks
+ * gNameOKControl as the window's default button via
+ * SetWindowDefaultButton(), which draws the native pulsing-blue glow
+ * instead. */
 static void DrawNameWindowContent(WindowPtr w)
 {
     Rect windowRect;
 
     SetPortWindowPort(w);
     GetPortBounds(GetWindowPort(w), &windowRect);
-    SetBackColor(kColorWindowBG);
-    SetForeColor(kColorWindowBG);
-    PaintRect(&windowRect);
 
     SetForeColor(kColorBlack);
     PenNormal();
@@ -888,16 +821,6 @@ static void DrawNameWindowContent(WindowPtr w)
     TextFace(normal);
     TextSize(12);
     DrawCenteredStringAt((windowRect.right - windowRect.left) / 2, 34, "\016Who's playing?");
-
-    if (gNameOKControl != NULL) {
-        Rect box;
-        GetControlBounds(gNameOKControl, &box);
-        SetForeColor(kColorBlack);
-        InsetRect(&box, -4, -4);
-        PenSize(3, 3);
-        FrameRoundRect(&box, 16, 16);
-        PenNormal();
-    }
 }
 
 /* Blocks until OK is hit; outName is empty if the field was left blank
@@ -920,8 +843,10 @@ static Boolean PromptForPlayerName(Str255 outName)
     SetRect(&fieldRect, 60, 67, 260, 85);
     gNameFieldControl = NewControl(w, &fieldRect, "\000", true, 0, 0, 0, kControlEditTextProc, 0L);
 
-    SetRect(&okRect, 125, 118, 195, 142);
+    /* Standard Aqua push button height (20px). */
+    SetRect(&okRect, 125, 120, 195, 140);
     gNameOKControl = NewControl(w, &okRect, "\002OK", true, 0, 0, 0, kControlPushButtonProc, 0L);
+    SetWindowDefaultButton(w, gNameOKControl);
 
     if (gNameFieldControl != NULL && gLastPlayerName[0] > 0) {
         SetControlData(gNameFieldControl, kControlEditTextPart, kControlEditTextTextTag,
@@ -944,6 +869,7 @@ static Boolean PromptForPlayerName(Str255 outName)
                     BeginUpdate(w);
                     DrawNameWindowContent(w);
                     DrawControls(w);
+                    if (gNameOKControl != NULL) Draw1Control(gNameOKControl);
                     EndUpdate(w);
                 }
                 break;
@@ -1048,8 +974,6 @@ pascal void StatsContentDrawProc(DialogRef dlg, DialogItemIndex itemNo)
 
     (void)itemNo;
 
-    PaintFullDialogBackground(dlg);
-
     GetDialogItem(dlg, 1, &type, &itemH, &box);
     SetForeColor(kColorBlack);
     PenNormal();
@@ -1125,24 +1049,16 @@ static void OnStatistics(void)
     GetDialogItem(dlg, 1, &type, &itemH, &box);
     SetDialogItem(dlg, 1, type, (Handle)NewUserItemUPP(&StatsContentDrawProc), &box);
 
-    GetDialogItem(dlg, 4, &type, &itemH, &box);
-    SetDialogItem(dlg, 4, type, (Handle)NewUserItemUPP(&ButtonFrameProc), &box);
-
-    DrawDialog(dlg);
-    DrawControls((WindowPtr)dlg);
+    ShowDialogWithDefaultButton(dlg, 3);
 
     do {
-        ModalDialog(NewModalFilterUPP(&DismissOnEnterFilterProc3), &item);
+        ModalDialog(NULL, &item);
         if (item == 2) {
             /* Force the redraw ourselves rather than invalidating and
-             * waiting for the next update event -- DrawDialog() repaints
-             * item 1's background but never a native control's content,
-             * so an update-driven repaint here would blank the buttons
-             * until clicked, same bug the initial reveal had. */
+             * waiting for the next update event. */
             WordleStatsClear(&gStats);
             SaveStats();
-            DrawDialog(dlg);
-            DrawControls((WindowPtr)dlg);
+            ShowDialogWithDefaultButton(dlg, 3);
         }
     } while (item != 3);
 

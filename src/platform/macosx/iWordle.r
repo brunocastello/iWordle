@@ -100,11 +100,12 @@ resource 'DITL' (200) {
         { 0, 0, 76, 340 },
         UserItem { enabled };
 
-        { 98, 135, 122, 205 },
+        /* Standard Aqua push button height (20px); the OS 9 build's
+         * hand-drawn default-button ring doesn't exist here -- real
+         * Carbon on OS X draws the native pulsing-blue default-button
+         * glow itself once SetDialogDefaultItem() marks this item. */
+        { 100, 135, 120, 205 },
         Button { enabled, "OK" };
-
-        { 93, 130, 127, 210 },
-        UserItem { disabled };
     }
 };
 
@@ -124,11 +125,8 @@ resource 'DITL' (201) {
         { 0, 0, 222, 280 },
         UserItem { enabled };
 
-        { 242, 105, 266, 175 },
+        { 244, 105, 264, 175 },
         Button { enabled, "OK" };
-
-        { 237, 100, 271, 180 },
-        UserItem { disabled };
     }
 };
 
@@ -162,8 +160,9 @@ resource 'WIND' (202, "Who's Playing?") {
    Item 1 is the background UserItem, which also hand-draws the table of
    every recorded player (name/played/win %/current streak/max streak),
    same technique the message/about dialogs use to draw their text. Item
-   2 is a plain "Clear" button (no ring -- it's not the default action).
-   Item 3 is "OK" (dismiss), item 4 its ButtonFrameProc ring. */
+   2 is a plain "Clear" button (not the default action). Item 3 is "OK"
+   (dismiss) -- SetDialogDefaultItem() marks it as the native default
+   button, no hand-drawn ring item needed. */
 resource 'DLOG' (203, "Ranking") {
     { 0, 0, 300, 420 },
     dBoxProc,
@@ -180,14 +179,11 @@ resource 'DITL' (203) {
         { 0, 0, 250, 420 },
         UserItem { enabled };
 
-        { 262, 30, 286, 110 },
+        { 264, 30, 284, 110 },
         Button { enabled, "Clear" };
 
-        { 262, 320, 286, 390 },
+        { 264, 320, 284, 390 },
         Button { enabled, "OK" };
-
-        { 258, 316, 290, 394 },
-        UserItem { disabled };
     }
 };
 

@@ -68,6 +68,26 @@ jobs:
             -framework Carbon -framework CoreFoundation -o build/iWordle
           EOF
 
+      - name: Extract Dock/Finder icon (.icns) from icons.r
+        run: |
+          set -euo pipefail
+          python3 - <<'PYEOF'
+          import re
+
+          content = open("src/platform/macosx/icons.r").read()
+          m = re.search(r"data 'icns' \(128\) \{(.*?)\};", content, re.DOTALL)
+          hex_str = "".join(re.findall(r'"([0-9A-Fa-f ]*)"', m.group(1))).replace(" ", "")
+          data = bytes.fromhex(hex_str)
+
+          assert data[:4] == b"icns", "bad magic"
+          size = int.from_bytes(data[4:8], "big")
+          assert size == len(data), "size mismatch"
+
+          import os
+          os.makedirs("build", exist_ok=True)
+          open("build/iWordle.icns", "wb").write(data)
+          PYEOF
+
       - name: Assemble .app bundle
         run: |
           set -euo pipefail
@@ -76,6 +96,7 @@ jobs:
           cp build/iWordle "$APP/Contents/MacOS/iWordle"
           chmod +x "$APP/Contents/MacOS/iWordle"
           cp build/iWordle.rsrc "$APP/Contents/Resources/iWordle.rsrc"
+          cp build/iWordle.icns "$APP/Contents/Resources/iWordle.icns"
           cp src/platform/macosx/Info.plist "$APP/Contents/Info.plist"
           cp src/platform/macosx/PkgInfo "$APP/Contents/PkgInfo"
           cd package
