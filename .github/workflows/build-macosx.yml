@@ -81,7 +81,7 @@ jobs:
           git clone --depth 1 https://github.com/mozilla/libdmg-hfsplus.git /tmp/libdmg-hfsplus
           cd /tmp/libdmg-hfsplus
           cmake .
-          make -j2 dmg hfsplus
+          make -j2 dmg-bin hfsplus
           sudo install -m 755 dmg/dmg /usr/local/bin/dmg
           sudo install -m 755 hfs/hfsplus /usr/local/bin/hfsplus
 
