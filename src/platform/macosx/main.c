@@ -260,25 +260,23 @@ static void DrawCenteredStringAt(short centerX, short baselineY, ConstStr255Para
     DrawString(s);
 }
 
-/* GetThemeFont(kThemeMenuTitleFont, ...) doesn't actually come out the
- * same size as the real menu bar on real hardware/QEMU (confirmed by
- * side-by-side screenshot against a Mac OS X 10.4.11 run) -- the About
- * window needs pixel parity with "iWordle"/"File" in the menu bar, not
- * just whatever the Appearance Manager claims that font is, so this
- * sets the exact family/size/weight directly instead.
- *
- * The classic Font Manager (what GetFNum queries) registers this family
- * as "LucidaGrande" with no space -- "Lucida Grande" is only the
- * display name System Preferences/Font Book show. GetFNum has no error
- * return; a name it doesn't recognize silently yields family ID 0
- * (systemFont) instead of the real font, which is what the space was
- * actually doing here. */
+/* GetThemeFont(kThemeMenuTitleFont, ...)'s own reported size/style don't
+ * come out matching the real menu bar on real hardware/QEMU (confirmed
+ * by side-by-side screenshot against a Mac OS X 10.4.11 run), so those
+ * are overridden explicitly below -- but its font *name* output is kept
+ * and used, rather than a hardcoded string, since that's the one thing
+ * it's guaranteed to get right (it's the Appearance Manager's own
+ * record of what that font actually is, sidestepping any mismatch
+ * between a font's display name and its real Font Manager family name,
+ * e.g. Lucida Grande being registered as "LucidaGrande" with no space). */
 static void UseMenuBarFont(Style face)
 {
     Str255 fontName;
+    SInt16 themeSize;
+    Style themeStyle;
     short fontID;
 
-    CStrToPStr(fontName, "LucidaGrande");
+    GetThemeFont(kThemeMenuTitleFont, smSystemScript, fontName, &themeSize, &themeStyle);
     GetFNum(fontName, &fontID);
     TextFont(fontID);
     TextSize(14);
