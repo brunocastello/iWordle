@@ -124,6 +124,7 @@ static void GetBackspaceKeyRect(Rect *outRect);
 static void DrawBevelRect(const Rect *r, RGBColor fill);
 static void DrawCenteredLetter(const Rect *r, char letter, short fontSize, const RGBColor *color);
 static void DrawCenteredStringAt(short centerX, short baselineY, ConstStr255Param s);
+static void UseThemeFontBumped(ThemeFontID themeID, ScriptCode script, short sizeBump);
 static void DrawTile(short row, short col);
 static void DrawKey(const Rect *r, char letter);
 static void DrawBoard(void);
@@ -257,6 +258,23 @@ static void DrawCenteredStringAt(short centerX, short baselineY, ConstStr255Para
     short w = StringWidth(s);
     MoveTo(centerX - w / 2, baselineY);
     DrawString(s);
+}
+
+/* Same as UseThemeFont(), but sized sizeBump points off the theme's own
+ * native size instead of taking it as-is -- still asks the Appearance
+ * Manager for the family/base size/style rather than hardcoding them. */
+static void UseThemeFontBumped(ThemeFontID themeID, ScriptCode script, short sizeBump)
+{
+    Str255 fontName;
+    SInt16 fontSize;
+    Style fontStyle;
+    short fontID;
+
+    GetThemeFont(themeID, script, fontName, &fontSize, &fontStyle);
+    GetFNum(fontName, &fontID);
+    TextFont(fontID);
+    TextFace(fontStyle);
+    TextSize(fontSize + sizeBump);
 }
 
 static void DrawTile(short row, short col)
@@ -633,37 +651,38 @@ pascal void AboutContentDrawProc(DialogRef dlg, DialogItemIndex itemNo)
     SetRect(&iconRect, midX - 16, box.top + 14, midX + 16, box.top + 46);
     PlotIconID(&iconRect, atNone, ttNone, 128);
 
-    /* Headline lines: same size/family as the menu bar, forced bold --
+    /* Headline lines: menu bar size bumped up one point, forced bold --
      * matching how the app-name menu title itself renders bold while the
      * other menu titles ("File", etc.) stay regular, so kThemeMenuTitleFont
      * alone (which resolves to that regular weight) isn't enough on its
-     * own. Detail lines: kThemeViewsFont, the font Finder's own sidebar
-     * list uses -- a real native list/detail font, not the menu bar font
-     * downsized. */
-    UseThemeFont(kThemeMenuTitleFont, smSystemScript);
+     * own. Detail lines: kThemeViewsFont (the font Finder's own sidebar
+     * list uses) bumped the same amount, not the menu bar font downsized.
+     * The OK button's own font is untouched -- it's a native control, not
+     * text this proc draws. */
+    UseThemeFontBumped(kThemeMenuTitleFont, smSystemScript, 1);
     TextFace(bold);
     CStrToPStr(s, "iWordle 1.0");
     DrawCenteredStringAt(midX, box.top + 64, s);
 
-    UseThemeFont(kThemeViewsFont, smSystemScript);
+    UseThemeFontBumped(kThemeViewsFont, smSystemScript, 1);
     CStrToPStr(s, "A native Wordle clone for Mac OS X");
     DrawCenteredStringAt(midX, box.top + 84, s);
 
-    UseThemeFont(kThemeMenuTitleFont, smSystemScript);
+    UseThemeFontBumped(kThemeMenuTitleFont, smSystemScript, 1);
     TextFace(bold);
     CStrToPStr(s, "Bruno Castello");
     DrawCenteredStringAt(midX, box.top + 112, s);
 
-    UseThemeFont(kThemeViewsFont, smSystemScript);
+    UseThemeFontBumped(kThemeViewsFont, smSystemScript, 1);
     CStrToPStr(s, "bfcastello@hotmail.com");
     DrawCenteredStringAt(midX, box.top + 132, s);
 
-    UseThemeFont(kThemeMenuTitleFont, smSystemScript);
+    UseThemeFontBumped(kThemeMenuTitleFont, smSystemScript, 1);
     TextFace(bold);
     CStrToPStr(s, "Engineer: Claude Sonnet 5");
     DrawCenteredStringAt(midX, box.top + 160, s);
 
-    UseThemeFont(kThemeViewsFont, smSystemScript);
+    UseThemeFontBumped(kThemeViewsFont, smSystemScript, 1);
     CStrToPStr(s, "\xA9 Castello Designs, 2026");
     DrawCenteredStringAt(midX, box.top + 188, s);
 }
