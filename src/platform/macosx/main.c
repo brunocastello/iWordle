@@ -402,18 +402,18 @@ static void BuildWinMessage(Str255 out)
 {
     Str255 num;
     NumToString((long)(gGame.currentRow + 1), num);
-    PStrCopy(out, "\pYou got it in ");
+    PStrCopy(out, "\016You got it in ");
     PStrAppend(out, num);
-    PStrAppend(out, "\p guess(es)!");
+    PStrAppend(out, "\013 guess(es)!");
 }
 
 static void BuildLoseMessage(Str255 out)
 {
     Str255 word;
     CStrToPStr(word, gGame.target);
-    PStrCopy(out, "\pOut of guesses! The word was ");
+    PStrCopy(out, "\035Out of guesses! The word was ");
     PStrAppend(out, word);
-    PStrAppend(out, "\p.");
+    PStrAppend(out, "\001.");
 }
 
 /* ---------------------------------------------------------------------- */
@@ -780,7 +780,7 @@ static void OnSubmit(void)
 
         case kSubmitNotInDictionary:
             SysBeep(10);
-            ShowMessage("\pNot in word list.");
+            ShowMessage("\021Not in word list.");
             break;
 
         case kSubmitOk:
@@ -887,7 +887,7 @@ static void DrawNameWindowContent(WindowPtr w)
     }
     TextFace(normal);
     TextSize(12);
-    DrawCenteredStringAt((windowRect.right - windowRect.left) / 2, 34, "\pWho's playing?");
+    DrawCenteredStringAt((windowRect.right - windowRect.left) / 2, 34, "\016Who's playing?");
 
     if (gNameOKControl != NULL) {
         Rect box;
@@ -918,10 +918,10 @@ static Boolean PromptForPlayerName(Str255 outName)
     }
 
     SetRect(&fieldRect, 60, 67, 260, 85);
-    gNameFieldControl = NewControl(w, &fieldRect, "\p", true, 0, 0, 0, kControlEditTextProc, 0L);
+    gNameFieldControl = NewControl(w, &fieldRect, "\000", true, 0, 0, 0, kControlEditTextProc, 0L);
 
     SetRect(&okRect, 125, 118, 195, 142);
-    gNameOKControl = NewControl(w, &okRect, "\pOK", true, 0, 0, 0, kControlPushButtonProc, 0L);
+    gNameOKControl = NewControl(w, &okRect, "\002OK", true, 0, 0, 0, kControlPushButtonProc, 0L);
 
     if (gNameFieldControl != NULL && gLastPlayerName[0] > 0) {
         SetControlData(gNameFieldControl, kControlEditTextPart, kControlEditTextTextTag,
@@ -1058,15 +1058,15 @@ pascal void StatsContentDrawProc(DialogRef dlg, DialogItemIndex itemNo)
     TextFace(bold);
     TextSize(12);
     MoveTo(box.left + 16, box.top + 20);
-    DrawString("\pName");
+    DrawString("\004Name");
     MoveTo(box.left + 220, box.top + 20);
-    DrawString("\pPlayed");
+    DrawString("\006Played");
     MoveTo(box.left + 280, box.top + 20);
-    DrawString("\pWin %");
+    DrawString("\005Win %");
     MoveTo(box.left + 335, box.top + 20);
-    DrawString("\pCur");
+    DrawString("\003Cur");
     MoveTo(box.left + 380, box.top + 20);
-    DrawString("\pMax");
+    DrawString("\003Max");
 
     MoveTo(box.left + 10, box.top + 26);
     LineTo(box.right - 10, box.top + 26);
@@ -1076,7 +1076,7 @@ pascal void StatsContentDrawProc(DialogRef dlg, DialogItemIndex itemNo)
 
     if (gStats.playerCount == 0) {
         MoveTo(box.left + 16, box.top + 50);
-        DrawString("\pNo players yet -- win or lose a game to get started.");
+        DrawString("\064No players yet -- win or lose a game to get started.");
         return;
     }
 
