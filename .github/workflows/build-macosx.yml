@@ -95,6 +95,13 @@ jobs:
           # scratch.
           cp /tmp/libdmg-hfsplus/test/empty.hfs package/iWordle.hfs
           hfsplus package/iWordle.hfs grow 8388608
+          # addall merges the CONTENTS of the source dir into an
+          # already-existing destination folder on the volume -- it
+          # doesn't create/rename that folder itself, so iWordle.app
+          # has to be mkdir'd on the volume first or its bundle
+          # contents would land loose at the volume root instead of
+          # inside an iWordle.app folder.
+          hfsplus package/iWordle.hfs mkdir /iWordle.app
           hfsplus package/iWordle.hfs addall package/iWordle.app /iWordle.app
           dmg build package/iWordle.hfs package/iWordle.dmg
 
