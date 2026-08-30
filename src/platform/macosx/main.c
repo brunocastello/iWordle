@@ -1405,9 +1405,23 @@ int main(void)
                 if (!CFURLGetFSRef(rsrcURL, &rsrcRef)) {
                     DebugLog("CFURLGetFSRef() failed");
                 } else {
+                    /* err=-39 (eofErr) here means FSOpenResourceFile
+                     * tried to read the file's actual RESOURCE fork,
+                     * which is empty -- our packaging step (no HFS+
+                     * resource-fork support on the Linux build image)
+                     * wrote Rez's output into the plain DATA fork
+                     * instead. FSGetDataForkName() gets the reserved
+                     * fork name that tells FSOpenResourceFile to read
+                     * the resource map from the data fork instead of
+                     * the (empty) resource fork. */
+                    HFSUniStr255 dataForkName;
                     SInt16 refNum = 0;
-                    OSStatus err = FSOpenResourceFile(&rsrcRef, 0, NULL, fsRdPerm, &refNum);
-                    snprintf(logbuf, sizeof(logbuf), "FSOpenResourceFile() err=%d refNum=%d",
+                    OSStatus err;
+
+                    FSGetDataForkName(&dataForkName);
+                    err = FSOpenResourceFile(&rsrcRef, dataForkName.length, dataForkName.unicode,
+                                              fsRdPerm, &refNum);
+                    snprintf(logbuf, sizeof(logbuf), "FSOpenResourceFile(dataFork) err=%d refNum=%d",
                              (int)err, (int)refNum);
                     DebugLog(logbuf);
                 }
