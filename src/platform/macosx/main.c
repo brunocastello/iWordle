@@ -1358,6 +1358,18 @@ static void RunEventLoop(void)
 
 int main(void)
 {
+    /* Unlike the classic Mac OS 9 build, a bundled Mach-O Carbon app on
+     * OS X doesn't get its Contents/Resources/iWordle.rsrc mapped into
+     * the Resource Manager automatically -- without this call,
+     * GetNewMBar/GetNewCWindow/GetNewDialog below all silently return
+     * NULL and the app launches with no window and no menu at all. */
+    {
+        CFBundleRef mainBundle = CFBundleGetMainBundle();
+        if (mainBundle != NULL) {
+            CFBundleOpenBundleResourceMap(mainBundle);
+        }
+    }
+
 #if !TARGET_API_MAC_CARBON
     InitGraf(&qd.thePort);
     InitFonts();

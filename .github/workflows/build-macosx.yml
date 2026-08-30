@@ -57,7 +57,7 @@ jobs:
 
           $CC -arch ppc -isysroot "$SDK" -mmacosx-version-min=10.4 \
             build/wordle_engine.o build/wordle_stats.o build/main.o \
-            -framework Carbon -o build/iWordle
+            -framework Carbon -framework CoreFoundation -o build/iWordle
           EOF
 
       - name: Assemble .app bundle
