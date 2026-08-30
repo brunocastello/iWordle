@@ -265,13 +265,20 @@ static void DrawCenteredStringAt(short centerX, short baselineY, ConstStr255Para
  * side-by-side screenshot against a Mac OS X 10.4.11 run) -- the About
  * window needs pixel parity with "iWordle"/"File" in the menu bar, not
  * just whatever the Appearance Manager claims that font is, so this
- * sets the exact family/size/weight directly instead. */
+ * sets the exact family/size/weight directly instead.
+ *
+ * The classic Font Manager (what GetFNum queries) registers this family
+ * as "LucidaGrande" with no space -- "Lucida Grande" is only the
+ * display name System Preferences/Font Book show. GetFNum has no error
+ * return; a name it doesn't recognize silently yields family ID 0
+ * (systemFont) instead of the real font, which is what the space was
+ * actually doing here. */
 static void UseMenuBarFont(Style face)
 {
     Str255 fontName;
     short fontID;
 
-    CStrToPStr(fontName, "Lucida Grande");
+    CStrToPStr(fontName, "LucidaGrande");
     GetFNum(fontName, &fontID);
     TextFont(fontID);
     TextSize(14);
