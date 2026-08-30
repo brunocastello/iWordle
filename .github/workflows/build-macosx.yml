@@ -73,9 +73,31 @@ jobs:
           cd package
           zip -r -y iWordle-mac-os-x-ppc.zip iWordle.app
 
-      - name: Upload app bundle
+      - name: Build libdmg-hfsplus (open-source, makes a real HFS+ .dmg without a Mac)
+        run: |
+          set -euo pipefail
+          sudo apt-get update -q
+          sudo apt-get install -y cmake libssl-dev zlib1g-dev libbz2-dev
+          git clone --depth 1 https://github.com/mozilla/libdmg-hfsplus.git /tmp/libdmg-hfsplus
+          cd /tmp/libdmg-hfsplus
+          cmake .
+          make -j2 dmg hfsplus
+          sudo install -m 755 dmg/dmg /usr/local/bin/dmg
+          sudo install -m 755 hfs/hfsplus /usr/local/bin/hfsplus
+
+      - name: Create .dmg
+        run: |
+          set -euo pipefail
+          dd if=/dev/zero of=package/iWordle.hfs bs=1M count=8
+          hfsplus package/iWordle.hfs create "iWordle"
+          hfsplus package/iWordle.hfs addall package/iWordle.app /iWordle.app
+          dmg build package/iWordle.hfs package/iWordle.dmg
+
+      - name: Upload app bundle + disk image
         uses: actions/upload-artifact@v4
         with:
           name: iWordle-mac-os-x-ppc
-          path: package/iWordle-mac-os-x-ppc.zip
+          path: |
+            package/iWordle-mac-os-x-ppc.zip
+            package/iWordle.dmg
           if-no-files-found: error
