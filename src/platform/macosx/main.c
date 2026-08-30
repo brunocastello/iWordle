@@ -124,7 +124,8 @@ static void GetBackspaceKeyRect(Rect *outRect);
 static void DrawBevelRect(const Rect *r, RGBColor fill);
 static void DrawCenteredLetter(const Rect *r, char letter, short fontSize, const RGBColor *color);
 static void DrawCenteredStringAt(short centerX, short baselineY, ConstStr255Param s);
-static void UseMenuBarFont(Style face);
+static void UseAboutHeadlineFont(void);
+static void UseAboutDetailFont(void);
 static void DrawTile(short row, short col);
 static void DrawKey(const Rect *r, char letter);
 static void DrawBoard(void);
@@ -260,27 +261,27 @@ static void DrawCenteredStringAt(short centerX, short baselineY, ConstStr255Para
     DrawString(s);
 }
 
-/* GetThemeFont(kThemeMenuTitleFont, ...)'s own reported size/style don't
- * come out matching the real menu bar on real hardware/QEMU (confirmed
- * by side-by-side screenshot against a Mac OS X 10.4.11 run), so those
- * are overridden explicitly below -- but its font *name* output is kept
- * and used, rather than a hardcoded string, since that's the one thing
- * it's guaranteed to get right (it's the Appearance Manager's own
- * record of what that font actually is, sidestepping any mismatch
- * between a font's display name and its real Font Manager family name,
- * e.g. Lucida Grande being registered as "LucidaGrande" with no space). */
-static void UseMenuBarFont(Style face)
+/* UseThemeFont() -- not GetFNum() -- is what actually resolves to the
+ * real antialiased TrueType system font here. Every earlier attempt that
+ * routed through GetFNum() by name (hardcoded "Lucida Grande",
+ * "LucidaGrande", even the theme's own reported name) rendered as
+ * jagged/non-antialiased on real hardware, meaning GetFNum() was
+ * silently landing on some bitmap fallback font in this toolchain no
+ * matter what name it was given -- so this leaves font resolution to
+ * the Appearance Manager entirely instead of trying to reproduce its
+ * result by hand. kThemeMenuTitleFont is the app-name-style menu bar
+ * font (forced bold for the About window's headline lines);
+ * kThemeViewsFont is the font Finder's own sidebar list uses (for
+ * everything else). */
+static void UseAboutHeadlineFont(void)
 {
-    Str255 fontName;
-    SInt16 themeSize;
-    Style themeStyle;
-    short fontID;
+    UseThemeFont(kThemeMenuTitleFont, smSystemScript);
+    TextFace(bold);
+}
 
-    GetThemeFont(kThemeMenuTitleFont, smSystemScript, fontName, &themeSize, &themeStyle);
-    GetFNum(fontName, &fontID);
-    TextFont(fontID);
-    TextSize(14);
-    TextFace(face);
+static void UseAboutDetailFont(void)
+{
+    UseThemeFont(kThemeViewsFont, smSystemScript);
 }
 
 static void DrawTile(short row, short col)
@@ -657,32 +658,32 @@ pascal void AboutContentDrawProc(DialogRef dlg, DialogItemIndex itemNo)
     SetRect(&iconRect, midX - 16, box.top + 14, midX + 16, box.top + 46);
     PlotIconID(&iconRect, atNone, ttNone, 128);
 
-    /* Every line here is Lucida Grande 14pt, exactly matching the real
-     * menu bar -- bold for the three lines styled after the app-name
-     * menu title ("iWordle"), plain for the rest, styled after the other
-     * menu titles ("File"). The OK button's own font is untouched --
-     * it's a native control, not text this proc draws. */
-    UseMenuBarFont(bold);
+    /* Headline lines styled after the app-name menu title ("iWordle");
+     * everything else styled after the Finder sidebar list -- see
+     * UseAboutHeadlineFont()/UseAboutDetailFont() above. The OK button's
+     * own font is untouched -- it's a native control, not text this proc
+     * draws. */
+    UseAboutHeadlineFont();
     CStrToPStr(s, "iWordle 1.0");
     DrawCenteredStringAt(midX, box.top + 64, s);
 
-    UseMenuBarFont(normal);
+    UseAboutDetailFont();
     CStrToPStr(s, "A native Wordle clone for Mac OS X");
     DrawCenteredStringAt(midX, box.top + 84, s);
 
-    UseMenuBarFont(bold);
+    UseAboutHeadlineFont();
     CStrToPStr(s, "Bruno Castello");
     DrawCenteredStringAt(midX, box.top + 112, s);
 
-    UseMenuBarFont(normal);
+    UseAboutDetailFont();
     CStrToPStr(s, "bfcastello@hotmail.com");
     DrawCenteredStringAt(midX, box.top + 132, s);
 
-    UseMenuBarFont(bold);
+    UseAboutHeadlineFont();
     CStrToPStr(s, "Engineer: Claude Sonnet 5");
     DrawCenteredStringAt(midX, box.top + 160, s);
 
-    UseMenuBarFont(normal);
+    UseAboutDetailFont();
     CStrToPStr(s, "\xA9 Castello Designs, 2026");
     DrawCenteredStringAt(midX, box.top + 188, s);
 }
