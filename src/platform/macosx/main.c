@@ -574,11 +574,12 @@ pascal void MessageContentDrawProc(DialogRef dlg, DialogItemIndex itemNo)
     SetForeColor(kColorBlack);
     PenNormal();
 
-    /* Ask the Appearance Manager for the native system font instead of
-     * hardcoding a name -- UseThemeFont() resolves to whatever this build
-     * is actually running under (Lucida Grande, or whatever else a given
-     * 10.0-10.5 install shipped) without us assuming which one. */
-    UseThemeFont(kThemeSystemFont, smSystemScript);
+    /* Same font as the menu bar. UseThemeFont(kThemeMenuTitleFont, ...)
+     * resolves to whatever font+size this build's menu bar is actually
+     * using instead of hardcoding a name -- Lucida Grande 14pt Regular on
+     * stock Aqua, but not assumed here in case a given 10.0-10.5 install
+     * differs. */
+    UseThemeFont(kThemeMenuTitleFont, smSystemScript);
     DrawCenteredStringAt(box.left + (box.right - box.left) / 2,
                           box.top + (box.bottom - box.top) / 2 + 4, gMessageText);
 }
@@ -632,37 +633,28 @@ pascal void AboutContentDrawProc(DialogRef dlg, DialogItemIndex itemNo)
     SetRect(&iconRect, midX - 16, box.top + 14, midX + 16, box.top + 46);
     PlotIconID(&iconRect, atNone, ttNone, 128);
 
-    /* Emphasized system font for the three heading lines, plain small
-     * system font for everything else -- hierarchy comes from weight and
-     * size on the one native font, not from mixing font families. Both
-     * are resolved through the Appearance Manager rather than hardcoding
-     * a font name, so this tracks whatever the running system actually
-     * uses instead of assuming Lucida Grande specifically. */
-    {
-        UseThemeFont(kThemeEmphasizedSystemFont, smSystemScript);
-        CStrToPStr(s, "iWordle 1.0");
-        DrawCenteredStringAt(midX, box.top + 64, s);
+    /* Same font as the menu bar, for every line -- see the comment in
+     * MessageContentDrawProc() above on why this is resolved through the
+     * Appearance Manager rather than a hardcoded name/size. */
+    UseThemeFont(kThemeMenuTitleFont, smSystemScript);
 
-        UseThemeFont(kThemeSmallSystemFont, smSystemScript);
-        CStrToPStr(s, "A native Wordle clone for Mac OS X");
-        DrawCenteredStringAt(midX, box.top + 84, s);
+    CStrToPStr(s, "iWordle 1.0");
+    DrawCenteredStringAt(midX, box.top + 64, s);
 
-        UseThemeFont(kThemeEmphasizedSystemFont, smSystemScript);
-        CStrToPStr(s, "Bruno Castello");
-        DrawCenteredStringAt(midX, box.top + 112, s);
+    CStrToPStr(s, "A native Wordle clone for Mac OS X");
+    DrawCenteredStringAt(midX, box.top + 84, s);
 
-        UseThemeFont(kThemeSmallSystemFont, smSystemScript);
-        CStrToPStr(s, "bfcastello@hotmail.com");
-        DrawCenteredStringAt(midX, box.top + 132, s);
+    CStrToPStr(s, "Bruno Castello");
+    DrawCenteredStringAt(midX, box.top + 112, s);
 
-        UseThemeFont(kThemeEmphasizedSystemFont, smSystemScript);
-        CStrToPStr(s, "Engineer: Claude Sonnet 5");
-        DrawCenteredStringAt(midX, box.top + 160, s);
+    CStrToPStr(s, "bfcastello@hotmail.com");
+    DrawCenteredStringAt(midX, box.top + 132, s);
 
-        UseThemeFont(kThemeSmallSystemFont, smSystemScript);
-        CStrToPStr(s, "\xA9 Castello Designs, 2026");
-        DrawCenteredStringAt(midX, box.top + 188, s);
-    }
+    CStrToPStr(s, "Engineer: Claude Sonnet 5");
+    DrawCenteredStringAt(midX, box.top + 160, s);
+
+    CStrToPStr(s, "\xA9 Castello Designs, 2026");
+    DrawCenteredStringAt(midX, box.top + 188, s);
 }
 
 /* ---------------------------------------------------------------------- */
@@ -794,7 +786,7 @@ static void DrawNameWindowContent(WindowPtr w)
 
     SetForeColor(kColorBlack);
     PenNormal();
-    UseThemeFont(kThemeSystemFont, smSystemScript);
+    UseThemeFont(kThemeMenuTitleFont, smSystemScript);
     DrawCenteredStringAt((windowRect.right - windowRect.left) / 2, 34, "\016Who's playing?");
 }
 
@@ -953,7 +945,7 @@ pascal void StatsContentDrawProc(DialogRef dlg, DialogItemIndex itemNo)
     SetForeColor(kColorBlack);
     PenNormal();
 
-    UseThemeFont(kThemeEmphasizedSystemFont, smSystemScript);
+    UseThemeFont(kThemeMenuTitleFont, smSystemScript);
     MoveTo(box.left + 16, box.top + 20);
     DrawString("\004Name");
     MoveTo(box.left + 220, box.top + 20);
@@ -967,8 +959,6 @@ pascal void StatsContentDrawProc(DialogRef dlg, DialogItemIndex itemNo)
 
     MoveTo(box.left + 10, box.top + 26);
     LineTo(box.right - 10, box.top + 26);
-
-    UseThemeFont(kThemeSmallSystemFont, smSystemScript);
 
     if (gStats.playerCount == 0) {
         MoveTo(box.left + 16, box.top + 50);
