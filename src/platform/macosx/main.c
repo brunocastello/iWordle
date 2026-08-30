@@ -124,7 +124,7 @@ static void GetBackspaceKeyRect(Rect *outRect);
 static void DrawBevelRect(const Rect *r, RGBColor fill);
 static void DrawCenteredLetter(const Rect *r, char letter, short fontSize, const RGBColor *color);
 static void DrawCenteredStringAt(short centerX, short baselineY, ConstStr255Param s);
-static void UseThemeFontBumped(ThemeFontID themeID, ScriptCode script, short sizeBump);
+static void UseMenuBarFont(Style face);
 static void DrawTile(short row, short col);
 static void DrawKey(const Rect *r, char letter);
 static void DrawBoard(void);
@@ -260,21 +260,22 @@ static void DrawCenteredStringAt(short centerX, short baselineY, ConstStr255Para
     DrawString(s);
 }
 
-/* Same as UseThemeFont(), but sized sizeBump points off the theme's own
- * native size instead of taking it as-is -- still asks the Appearance
- * Manager for the family/base size/style rather than hardcoding them. */
-static void UseThemeFontBumped(ThemeFontID themeID, ScriptCode script, short sizeBump)
+/* GetThemeFont(kThemeMenuTitleFont, ...) doesn't actually come out the
+ * same size as the real menu bar on real hardware/QEMU (confirmed by
+ * side-by-side screenshot against a Mac OS X 10.4.11 run) -- the About
+ * window needs pixel parity with "iWordle"/"File" in the menu bar, not
+ * just whatever the Appearance Manager claims that font is, so this
+ * sets the exact family/size/weight directly instead. */
+static void UseMenuBarFont(Style face)
 {
     Str255 fontName;
-    SInt16 fontSize;
-    Style fontStyle;
     short fontID;
 
-    GetThemeFont(themeID, script, fontName, &fontSize, &fontStyle);
+    CStrToPStr(fontName, "Lucida Grande");
     GetFNum(fontName, &fontID);
     TextFont(fontID);
-    TextFace(fontStyle);
-    TextSize(fontSize + sizeBump);
+    TextSize(14);
+    TextFace(face);
 }
 
 static void DrawTile(short row, short col)
@@ -651,38 +652,32 @@ pascal void AboutContentDrawProc(DialogRef dlg, DialogItemIndex itemNo)
     SetRect(&iconRect, midX - 16, box.top + 14, midX + 16, box.top + 46);
     PlotIconID(&iconRect, atNone, ttNone, 128);
 
-    /* Headline lines: menu bar size bumped up one point, forced bold --
-     * matching how the app-name menu title itself renders bold while the
-     * other menu titles ("File", etc.) stay regular, so kThemeMenuTitleFont
-     * alone (which resolves to that regular weight) isn't enough on its
-     * own. Detail lines: kThemeViewsFont (the font Finder's own sidebar
-     * list uses) bumped the same amount, not the menu bar font downsized.
-     * The OK button's own font is untouched -- it's a native control, not
-     * text this proc draws. */
-    UseThemeFontBumped(kThemeMenuTitleFont, smSystemScript, 1);
-    TextFace(bold);
+    /* Every line here is Lucida Grande 14pt, exactly matching the real
+     * menu bar -- bold for the three lines styled after the app-name
+     * menu title ("iWordle"), plain for the rest, styled after the other
+     * menu titles ("File"). The OK button's own font is untouched --
+     * it's a native control, not text this proc draws. */
+    UseMenuBarFont(bold);
     CStrToPStr(s, "iWordle 1.0");
     DrawCenteredStringAt(midX, box.top + 64, s);
 
-    UseThemeFontBumped(kThemeViewsFont, smSystemScript, 1);
+    UseMenuBarFont(normal);
     CStrToPStr(s, "A native Wordle clone for Mac OS X");
     DrawCenteredStringAt(midX, box.top + 84, s);
 
-    UseThemeFontBumped(kThemeMenuTitleFont, smSystemScript, 1);
-    TextFace(bold);
+    UseMenuBarFont(bold);
     CStrToPStr(s, "Bruno Castello");
     DrawCenteredStringAt(midX, box.top + 112, s);
 
-    UseThemeFontBumped(kThemeViewsFont, smSystemScript, 1);
+    UseMenuBarFont(normal);
     CStrToPStr(s, "bfcastello@hotmail.com");
     DrawCenteredStringAt(midX, box.top + 132, s);
 
-    UseThemeFontBumped(kThemeMenuTitleFont, smSystemScript, 1);
-    TextFace(bold);
+    UseMenuBarFont(bold);
     CStrToPStr(s, "Engineer: Claude Sonnet 5");
     DrawCenteredStringAt(midX, box.top + 160, s);
 
-    UseThemeFontBumped(kThemeViewsFont, smSystemScript, 1);
+    UseMenuBarFont(normal);
     CStrToPStr(s, "\xA9 Castello Designs, 2026");
     DrawCenteredStringAt(midX, box.top + 188, s);
 }
