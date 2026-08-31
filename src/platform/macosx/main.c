@@ -20,12 +20,6 @@
 #include "wordle_engine.h"
 #include "wordle_stats.h"
 
-/* Real Apple headers already declare this classic font ID as the
- * lowercase enum constant `geneva`; kFontGeneva just keeps this file's
- * naming identical to the Mac OS 9 build's copy (systemFont=0,
- * applFont=1, newYork=2, geneva=3, ...). */
-#define kFontGeneva 3
-
 /* ---------------------------------------------------------------------- */
 /* Menu IDs (must match iWordle.r)                                        */
 /* ---------------------------------------------------------------------- */
@@ -228,7 +222,12 @@ static void DrawCenteredLetter(const Rect *r, char letter, short fontSize, const
     s[0] = 1;
     s[1] = (unsigned char)letter;
 
-    TextFont(kFontGeneva);
+    /* Same native font family as the About window/other dialogs, kept
+     * at this call's own size -- UseThemeFont() reliably resolves the
+     * real system font family (see [[project_theme_font_unreliable]]
+     * in memory for why GetFNum()-by-name isn't used for this instead),
+     * then TextSize()/TextFace() override just the size/weight. */
+    UseThemeFont(kThemeSystemFont, smSystemScript);
     TextSize(fontSize);
     TextFace(bold);
     SetForeColor(*color);
@@ -355,7 +354,8 @@ static void DrawKeyboard(void)
         s[2] = 'A';
         s[3] = 'C';
         s[4] = 'K';
-        TextFont(kFontGeneva);
+        /* Same native font family as the tiles above/other dialogs. */
+        UseThemeFont(kThemeSystemFont, smSystemScript);
         TextSize(14);
         TextFace(bold);
         SetForeColor(kColorBorder);

@@ -62,9 +62,18 @@ resource 'MENU' (128, "File") {
 /* Main document window                                                   */
 /* ---------------------------------------------------------------------- */
 
+/* noGrowDocProc, not documentProc -- the board/keyboard layout is a
+ * fixed size (see MARGIN etc. in main.c), so this was never meant to be
+ * resizable. ChangeWindowAttributes(win, 0, kWindowResizableAttribute)
+ * in main.c removes the functional resizing, but documentProc's own
+ * frame still rendered a grow-box-shaped chrome element in the corner
+ * regardless (a white square left over where the resize handle used to
+ * be, confirmed by screenshot) -- noGrowDocProc is the classic WDEF
+ * variant that never draws that chrome at all, fixing it at the root
+ * instead of trying to suppress it at runtime. */
 resource 'WIND' (128, "iWordle") {
     { 0, 0, 558, 502 },
-    documentProc,
+    noGrowDocProc,
     visible,
     goAway,
     0,
@@ -82,16 +91,18 @@ resource 'WIND' (200, "Message") {
     centerMainScreen
 };
 
-/* Plain WIND, not DLOG/DITL -- a real documentProc/goAway window gets
+/* Plain WIND, not DLOG/DITL -- a real noGrowDocProc/goAway window gets
  * the standard Aqua traffic-light title bar for free, matching every
  * other native About window on OS X, and is dismissed by its own close
- * box rather than an OK button. Same reasoning and architecture as WIND
- * 202 (see the comment above it and on OnAbout() in main.c): a plain
+ * box rather than an OK button. noGrowDocProc rather than documentProc
+ * for the same reason as WIND (128) above -- no grow-box chrome for a
+ * fixed-size window. Same reasoning and architecture as WIND 202 (see
+ * the comment above it and on OnAbout() in main.c): a plain
  * WaitNextEvent loop with real native controls, no DITL at all. Starts
  * invisible; OnAbout() shows it only once its controls are set up. */
 resource 'WIND' (201, "About iWordle") {
     { 0, 0, 205, 280 },
-    documentProc,
+    noGrowDocProc,
     invisible,
     goAway,
     0,
