@@ -764,26 +764,26 @@ static void OnAbout(void)
     SetDialogItem(dlg, 1, type, (Handle)NewUserItemUPP(&AboutContentDrawProc), &box);
 
     /* Real native Static Text controls, not hand-drawn text -- see
-     * AddAboutLine() for why. kThemeEmphasizedSystemFont/kThemeSystemFont
-     * for bold/regular, matching the app-name vs. plain menu title
-     * distinction in the real menu bar (a 13pt system font, not the real
-     * menu bar's 14pt -- ThemeFontIDs only offer Apple's fixed sizes). */
+     * AddAboutLine() for why. kThemeWindowTitleFont (bold, one size tier
+     * up from kThemeEmphasizedSystemFont) for the headline lines,
+     * kThemeSystemFont (regular) for the rest -- both still real
+     * SDK-provided ThemeFontIDs, not a hand-picked point size. */
     win = GetDialogWindow(dlg);
 
     CStrToPStr(s, "iWordle 1.0");
-    AddAboutLine(win, box.left, box.right, box.top + 50, 20, kThemeEmphasizedSystemFont, s);
+    AddAboutLine(win, box.left, box.right, box.top + 50, 20, kThemeWindowTitleFont, s);
 
     CStrToPStr(s, "A native Wordle clone for Mac OS X");
     AddAboutLine(win, box.left, box.right, box.top + 70, 20, kThemeSystemFont, s);
 
     CStrToPStr(s, "Bruno Castello");
-    AddAboutLine(win, box.left, box.right, box.top + 98, 20, kThemeEmphasizedSystemFont, s);
+    AddAboutLine(win, box.left, box.right, box.top + 98, 20, kThemeWindowTitleFont, s);
 
     CStrToPStr(s, "bfcastello@hotmail.com");
     AddAboutLine(win, box.left, box.right, box.top + 118, 20, kThemeSystemFont, s);
 
     CStrToPStr(s, "Engineer: Claude Sonnet 5");
-    AddAboutLine(win, box.left, box.right, box.top + 146, 20, kThemeEmphasizedSystemFont, s);
+    AddAboutLine(win, box.left, box.right, box.top + 146, 20, kThemeWindowTitleFont, s);
 
     CStrToPStr(s, "\xA9 Castello Designs, 2026");
     AddAboutLine(win, box.left, box.right, box.top + 174, 20, kThemeSystemFont, s);
