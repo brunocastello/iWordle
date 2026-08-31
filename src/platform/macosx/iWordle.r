@@ -1,34 +1,27 @@
 /*
  * Resource definitions for iWordle: menu bar, main document window, a
- * message dialog (New Game confirm, Give Up, Win / Lose), and a
+ * message dialog (New Game confirm, Give Up, Win / Lose, 200), and a
  * statistics scoreboard (203).
  *
- * Those are DLOG/DITL dialogs where item 1 is a UserItem that paints the
- * Platinum gray background (Retro68's default open-source Multiversal
- * Interfaces don't expose the Appearance Manager, so there's no
- * SetThemeWindowBackground to ask for it -- this project now links
- * against Apple's real Universal Interfaces instead, see
- * third_party/InterfacesAndLibraries, but these dialogs were built before
- * that and never revisited since the plain gray fill already works fine)
- * and draws that dialog's text/table content by hand, and the dialog's
- * default button is a real native Button immediately followed by a
- * UserItem that draws the classic bold rounded frame marking it as the
- * default -- the standard technique that distinguishes an OK button from
- * a plain Cancel/Clear button in a native alert. SetDialogDefaultItem()
- * was tried as a way to get that emphasis for free from the Dialog Manager
- * instead, but rendered far worse (the button barely appeared at all) than
- * this hand-drawn frame does, so this is the version we're keeping. The
- * frame's UserItem proc reads the button's box off "itemNo - 1" (the item
- * right before it), which is why every DLOG/DITL dialog here keeps its
- * default button immediately followed by its ring UserItem in the item
- * list.
+ * Those are still DLOG/DITL dialogs (real native Button items, tracked
+ * via ModalDialog -- no reason to replace a mechanism that already
+ * worked), but item 1's UserItem no longer draws anything: it's kept
+ * only so main.c can read its rect via GetDialogItem() to lay out real
+ * content against, since neither the dialog's background nor its text
+ * is hand-drawn anymore. main.c calls SetThemeWindowBackground() on the
+ * dialog's window for the native Aqua panel background, and builds the
+ * actual message text / stats table out of real Static Text controls
+ * (and, for the stats table's divider, a real CreateSeparatorControl())
+ * added directly to that window at runtime -- the same techniques used
+ * for the About window (201) and the player-name prompt (202). See
+ * ShowMessage()/BuildStatsContent() in main.c.
  *
- * The player-name prompt (202) and the About window (201) are NOT one
- * of these -- they're plain WINDs with no DITL at all, built entirely
- * from real native Control Manager controls at runtime instead of a
- * hand-drawn UserItem, and dismissed via their own event loop rather
- * than ModalDialog. See the comments on WIND (202) below, on WIND (201)
- * below, and on PromptForPlayerName/OnAbout in main.c for why.
+ * The player-name prompt (202) and the About window (201) are NOT
+ * DLOG/DITL at all -- they're plain WINDs, built entirely from real
+ * native Control Manager controls at runtime, and dismissed via their
+ * own event loop rather than ModalDialog. See the comments on WIND (202)
+ * below, on WIND (201) below, and on PromptForPlayerName/OnAbout in
+ * main.c for why.
  */
 
 #include "Types.r"
@@ -154,12 +147,12 @@ resource 'WIND' (202, "Who's Playing?") {
 };
 
 /* ---- Statistics scoreboard (DLOG 203 + DITL 203) ----
-   Item 1 is the background UserItem, which also hand-draws the table of
-   every recorded player (name/played/win %/current streak/max streak),
-   same technique the message/about dialogs use to draw their text. Item
-   2 is a plain "Clear" button (not the default action). Item 3 is "OK"
-   (dismiss) -- SetDialogDefaultItem() marks it as the native default
-   button, no hand-drawn ring item needed. */
+   Item 1 is an inert UserItem, kept only to define the content rect
+   BuildStatsContent() (main.c) lays real Static Text controls and a
+   real CreateSeparatorControl() divider against -- see the top-of-file
+   comment. Item 2 is a plain "Clear" button (not the default action).
+   Item 3 is "OK" (dismiss) -- SetDialogDefaultItem() marks it as the
+   native default button, no hand-drawn ring item needed. */
 resource 'DLOG' (203, "Ranking") {
     { 0, 0, 300, 420 },
     dBoxProc,

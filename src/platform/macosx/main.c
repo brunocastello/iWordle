@@ -20,10 +20,6 @@
 #include "wordle_engine.h"
 #include "wordle_stats.h"
 
-#ifndef TARGET_API_MAC_CARBON
-#define NewUserItemUPP NewUserItemProc
-#endif
-
 /* Real Apple headers already declare this classic font ID as the
  * lowercase enum constant `geneva`; kFontGeneva just keeps this file's
  * naming identical to the Mac OS 9 build's copy (systemFont=0,
@@ -102,11 +98,7 @@ static ControlHandle gNameOKControl = NULL;
 /* Forward declarations                                                   */
 /* ---------------------------------------------------------------------- */
 
-pascal void MessageContentDrawProc(DialogRef dlg, DialogItemIndex itemNo);
-pascal void StatsContentDrawProc(DialogRef dlg, DialogItemIndex itemNo);
 static void ShowDialogWithDefaultButton(DialogPtr dlg, short defaultItem);
-
-static void DrawNameWindowContent(WindowPtr w);
 
 static void PStrToCStr(char *dst, ConstStr255Param src, size_t dstSize);
 static Boolean GetStatsFileSpec(FSSpec *spec);
@@ -122,9 +114,8 @@ static void GetBackspaceKeyRect(Rect *outRect);
 
 static void DrawBevelRect(const Rect *r, RGBColor fill);
 static void DrawCenteredLetter(const Rect *r, char letter, short fontSize, const RGBColor *color);
-static void DrawCenteredStringAt(short centerX, short baselineY, ConstStr255Param s);
-static void AddAboutLine(WindowRef win, short left, short right, short top, short height,
-                          ThemeFontID themeFont, ConstStr255Param s);
+static ControlRef AddLabel(WindowRef win, short left, short right, short top, short height,
+                            ThemeFontID themeFont, short just, ConstStr255Param s);
 static void DrawTile(short row, short col);
 static void DrawKey(const Rect *r, char letter);
 static void DrawBoard(void);
@@ -250,47 +241,43 @@ static void DrawCenteredLetter(const Rect *r, char letter, short fontSize, const
     DrawString(s);
 }
 
-/* Draws s horizontally centered on centerX with its baseline at
- * baselineY; caller sets font/size/face/color beforehand. Used for the
- * message and About windows' hand-drawn text and OK buttons. */
-static void DrawCenteredStringAt(short centerX, short baselineY, ConstStr255Param s)
-{
-    short w = StringWidth(s);
-    MoveTo(centerX - w / 2, baselineY);
-    DrawString(s);
-}
-
-/* Five rounds of hand-drawing this text (DrawString() with various font
+/* Five rounds of hand-drawing text (DrawString() with various font
  * selections, DrawThemeTextBox(), raw ATSUI) each got some dimension
  * wrong -- wrong typeface, wrong size, ignored weight, or, with raw
  * ATSUI, excessive/doubled boldness. A real open-source Carbon PowerPC
  * app's About window (snes9x's macosx port) doesn't hand-draw its text
  * at all -- it uses genuine native controls, which the OS renders
  * itself through the exact same pipeline as any other native UI text
- * (including this dialog's own OK button, which has rendered correctly
+ * (including any dialog's own OK button, which has rendered correctly
  * throughout all of this). CreateStaticTextControl() with
  * kControlUseThemeFontIDMask does the same: the Control Manager owns
  * the rendering, not this code, so there's no font/antialiasing
- * decision left to get wrong. */
-static void AddAboutLine(WindowRef win, short left, short right, short top, short height,
-                          ThemeFontID themeFont, ConstStr255Param s)
+ * decision left to get wrong. Used for every dialog's text now, not
+ * just the About window -- see [[project_theme_font_unreliable]]/
+ * feedback_no_hand_drawn_ui in memory for why this is a standing rule,
+ * not a one-off fix. Returns the created control (NULL on failure) so
+ * callers that need to dispose/rebuild dynamic content (like the stats
+ * table) can track it. */
+static ControlRef AddLabel(WindowRef win, short left, short right, short top, short height,
+                            ThemeFontID themeFont, short just, ConstStr255Param s)
 {
     Rect r;
     CFStringRef cfStr;
     ControlFontStyleRec style;
-    ControlRef ctl;
+    ControlRef ctl = NULL;
 
     SetRect(&r, left, top, right, top + height);
 
     cfStr = CFStringCreateWithPascalString(NULL, s, kCFStringEncodingMacRoman);
-    if (cfStr == NULL) return;
+    if (cfStr == NULL) return NULL;
 
     style.flags = kControlUseThemeFontIDMask | kControlUseJustMask;
     style.font = themeFont;
-    style.just = teCenter;
+    style.just = just;
 
     CreateStaticTextControl(win, &r, cfStr, &style, &ctl);
     CFRelease(cfStr);
+    return ctl;
 }
 
 static void DrawTile(short row, short col)
@@ -592,32 +579,14 @@ static void ShowDialogWithDefaultButton(DialogPtr dlg, short defaultItem)
 /* Message dialog (New Game / Give Up / Win / Lose)                       */
 /* ---------------------------------------------------------------------- */
 
-/* Set by ShowMessage() just before the modal loop; read by
- * MessageContentDrawProc(). */
-static Str255 gMessageText;
-
-pascal void MessageContentDrawProc(DialogRef dlg, DialogItemIndex itemNo)
-{
-    DialogItemType type;
-    Handle itemH;
-    Rect box;
-
-    (void)itemNo;
-
-    GetDialogItem(dlg, 1, &type, &itemH, &box);
-    SetForeColor(kColorBlack);
-    PenNormal();
-
-    /* Same font as the menu bar. UseThemeFont(kThemeMenuTitleFont, ...)
-     * resolves to whatever font+size this build's menu bar is actually
-     * using instead of hardcoding a name -- Lucida Grande 14pt Regular on
-     * stock Aqua, but not assumed here in case a given 10.0-10.5 install
-     * differs. */
-    UseThemeFont(kThemeMenuTitleFont, smSystemScript);
-    DrawCenteredStringAt(box.left + (box.right - box.left) / 2,
-                          box.top + (box.bottom - box.top) / 2 + 4, gMessageText);
-}
-
+/* No hand-drawn content or gMessageText global needed anymore -- the
+ * message is a real Static Text control built directly with the text
+ * ShowMessage() was called with, same technique as the About window's
+ * AddLabel() (see its comment for why). kThemeAlertHeaderFont is
+ * documented as the font for "the first (and most important) message of
+ * an alert window", which is exactly this dialog's role. Item 1's
+ * UserItem stays in the DITL purely to reserve the content rect via
+ * GetDialogItem() -- nothing draws it. */
 static void ShowMessage(ConstStr255Param msg)
 {
     DialogPtr dlg;
@@ -625,14 +594,17 @@ static void ShowMessage(ConstStr255Param msg)
     DialogItemType type;
     Handle itemH;
     Rect box;
-
-    PStrCopy(gMessageText, msg);
+    WindowRef win;
 
     dlg = GetNewDialog(200, NULL, (WindowPtr)-1);
     if (dlg == NULL) return;
 
+    win = GetDialogWindow(dlg);
+    SetThemeWindowBackground(win, kThemeBrushDialogBackgroundActive, false);
+
     GetDialogItem(dlg, 1, &type, &itemH, &box);
-    SetDialogItem(dlg, 1, type, (Handle)NewUserItemUPP(&MessageContentDrawProc), &box);
+    AddLabel(win, box.left, box.right, box.top + (box.bottom - box.top) / 2 - 10, 20,
+             kThemeAlertHeaderFont, teCenter, msg);
 
     ShowDialogWithDefaultButton(dlg, 2);
 
@@ -773,22 +745,22 @@ static void OnAbout(void)
      * kThemeSmallSystemFont -- documented as "slightly smaller...
      * compared to kThemeSystemFont" -- one size down for the rest. */
     CStrToPStr(s, "iWordle 1.0");
-    AddAboutLine(win, windowRect.left, windowRect.right, 54, 20, kThemeAlertHeaderFont, s);
+    AddLabel(win, windowRect.left, windowRect.right, 54, 20, kThemeAlertHeaderFont, teCenter, s);
 
     CStrToPStr(s, "A native Wordle clone for Mac OS X");
-    AddAboutLine(win, windowRect.left, windowRect.right, 74, 18, kThemeSmallSystemFont, s);
+    AddLabel(win, windowRect.left, windowRect.right, 74, 18, kThemeSmallSystemFont, teCenter, s);
 
     CStrToPStr(s, "Bruno Castello");
-    AddAboutLine(win, windowRect.left, windowRect.right, 100, 20, kThemeAlertHeaderFont, s);
+    AddLabel(win, windowRect.left, windowRect.right, 100, 20, kThemeAlertHeaderFont, teCenter, s);
 
     CStrToPStr(s, "bfcastello@hotmail.com");
-    AddAboutLine(win, windowRect.left, windowRect.right, 120, 18, kThemeSmallSystemFont, s);
+    AddLabel(win, windowRect.left, windowRect.right, 120, 18, kThemeSmallSystemFont, teCenter, s);
 
     CStrToPStr(s, "Engineer: Claude Sonnet 5");
-    AddAboutLine(win, windowRect.left, windowRect.right, 146, 20, kThemeAlertHeaderFont, s);
+    AddLabel(win, windowRect.left, windowRect.right, 146, 20, kThemeAlertHeaderFont, teCenter, s);
 
     CStrToPStr(s, "\xA9 Castello Designs, 2026");
-    AddAboutLine(win, windowRect.left, windowRect.right, 172, 18, kThemeSmallSystemFont, s);
+    AddLabel(win, windowRect.left, windowRect.right, 172, 18, kThemeSmallSystemFont, teCenter, s);
 
     ShowWindow(win);
     SelectWindow(win);
@@ -862,31 +834,19 @@ static void OnAbout(void)
  * runs a plain WaitNextEvent loop with real native controls with none of
  * that friction, so this reuses that same architecture instead of
  * continuing to fight ModalDialog for a case it wasn't built for. */
-/* No hand-painted background or hand-drawn default-button ring here --
- * this is a real Carbon dBoxProc window on OS X, which already draws
- * its own native Aqua dialog background; PromptForPlayerName() marks
+/* No hand-drawn default-button ring here -- PromptForPlayerName() marks
  * gNameOKControl as the window's default button via
  * SetWindowDefaultButton(), which draws the native pulsing-blue glow
- * instead. */
-static void DrawNameWindowContent(WindowPtr w)
-{
-    Rect windowRect;
-
-    SetPortWindowPort(w);
-    GetPortBounds(GetWindowPort(w), &windowRect);
-
-    SetForeColor(kColorBlack);
-    PenNormal();
-    UseThemeFont(kThemeMenuTitleFont, smSystemScript);
-    DrawCenteredStringAt((windowRect.right - windowRect.left) / 2, 34, "\016Who's playing?");
-}
+ * instead. The "Who's playing?" label is a real Static Text control
+ * (see PromptForPlayerName()), not hand-drawn, so there's no content
+ * draw proc left to call on update -- DrawControls() alone repaints it. */
 
 /* Blocks until OK is hit; outName is empty if the field was left blank
  * (RecordGameResult treats that as "don't record this result"). */
 static Boolean PromptForPlayerName(Str255 outName)
 {
     WindowPtr w;
-    Rect fieldRect, okRect;
+    Rect windowRect, fieldRect, okRect;
     ControlRef rootControl;
     Boolean done = false;
     EventRecord event;
@@ -894,9 +854,18 @@ static Boolean PromptForPlayerName(Str255 outName)
     w = GetNewCWindow(202, NULL, (WindowPtr)-1);
     if (w == NULL) { outName[0] = 0; return false; }
 
+    /* Native Aqua dialog background, same fix as the About/message/stats
+     * windows (see [[project_theme_font_unreliable]] in memory) -- a
+     * plain dBoxProc window is white by default, not the native gray. */
+    SetThemeWindowBackground(w, kThemeBrushDialogBackgroundActive, false);
+
     if (GetRootControl(w, &rootControl) != noErr) {
         CreateRootControl(w, &rootControl);
     }
+
+    GetPortBounds(GetWindowPort(w), &windowRect);
+    AddLabel(w, windowRect.left, windowRect.right, 24, 20, kThemeAlertHeaderFont, teCenter,
+             "\016Who's playing?");
 
     SetRect(&fieldRect, 60, 67, 260, 85);
     gNameFieldControl = NewControl(w, &fieldRect, "\000", true, 0, 0, 0, kControlEditTextProc, 0L);
@@ -925,7 +894,6 @@ static Boolean PromptForPlayerName(Str255 outName)
             case updateEvt:
                 if ((WindowPtr)event.message == w) {
                     BeginUpdate(w);
-                    DrawNameWindowContent(w);
                     DrawControls(w);
                     if (gNameOKControl != NULL) Draw1Control(gNameOKControl);
                     EndUpdate(w);
@@ -1021,43 +989,68 @@ static void RecordGameResult(Boolean won)
     SaveStats();
 }
 
-pascal void StatsContentDrawProc(DialogRef dlg, DialogItemIndex itemNo)
+/* Bounded by WORDLE_STATS_MAX_PLAYERS (10): at most 5 header labels + 1
+ * separator + 10 rows * 5 columns = 56 controls, so a fixed-size array
+ * is simpler than tracking this dynamically. Rebuilt from scratch (via
+ * ClearStatsContent() + BuildStatsContent()) on open and after Clear,
+ * since the row count itself changes. */
+static ControlRef gStatsContentControls[64];
+static short gStatsContentCount;
+
+static void AddStatsControl(ControlRef ctl)
 {
-    DialogItemType type;
-    Handle itemH;
-    Rect box;
+    if (ctl != NULL && gStatsContentCount < 64) {
+        gStatsContentControls[gStatsContentCount++] = ctl;
+    }
+}
+
+static void ClearStatsContent(void)
+{
+    short i;
+    for (i = 0; i < gStatsContentCount; i++) {
+        DisposeControl(gStatsContentControls[i]);
+    }
+    gStatsContentCount = 0;
+}
+
+/* Real native controls for the header row, divider, and every player
+ * row -- see AddLabel()'s comment for why. kThemeEmphasizedSystemFont
+ * for the column headers, kThemeSystemFont for the data, and a real
+ * CreateSeparatorControl() divider line instead of a hand-drawn
+ * MoveTo/LineTo one. */
+static void BuildStatsContent(WindowRef win, const Rect *box)
+{
     unsigned short i;
     short rowY;
     Str255 s;
+    Rect sepRect;
+    ControlRef sep;
 
-    (void)itemNo;
+    ClearStatsContent();
 
-    GetDialogItem(dlg, 1, &type, &itemH, &box);
-    SetForeColor(kColorBlack);
-    PenNormal();
+    AddStatsControl(AddLabel(win, box->left + 16, box->left + 210, box->top + 8, 16,
+                              kThemeEmphasizedSystemFont, teFlushLeft, "\004Name"));
+    AddStatsControl(AddLabel(win, box->left + 220, box->left + 270, box->top + 8, 16,
+                              kThemeEmphasizedSystemFont, teFlushLeft, "\006Played"));
+    AddStatsControl(AddLabel(win, box->left + 280, box->left + 330, box->top + 8, 16,
+                              kThemeEmphasizedSystemFont, teFlushLeft, "\005Win %"));
+    AddStatsControl(AddLabel(win, box->left + 335, box->left + 375, box->top + 8, 16,
+                              kThemeEmphasizedSystemFont, teFlushLeft, "\003Cur"));
+    AddStatsControl(AddLabel(win, box->left + 380, box->right - 10, box->top + 8, 16,
+                              kThemeEmphasizedSystemFont, teFlushLeft, "\003Max"));
 
-    UseThemeFont(kThemeMenuTitleFont, smSystemScript);
-    MoveTo(box.left + 16, box.top + 20);
-    DrawString("\004Name");
-    MoveTo(box.left + 220, box.top + 20);
-    DrawString("\006Played");
-    MoveTo(box.left + 280, box.top + 20);
-    DrawString("\005Win %");
-    MoveTo(box.left + 335, box.top + 20);
-    DrawString("\003Cur");
-    MoveTo(box.left + 380, box.top + 20);
-    DrawString("\003Max");
-
-    MoveTo(box.left + 10, box.top + 26);
-    LineTo(box.right - 10, box.top + 26);
+    SetRect(&sepRect, box->left + 10, box->top + 26, box->right - 10, box->top + 27);
+    CreateSeparatorControl(win, &sepRect, &sep);
+    AddStatsControl(sep);
 
     if (gStats.playerCount == 0) {
-        MoveTo(box.left + 16, box.top + 50);
-        DrawString("\064No players yet -- win or lose a game to get started.");
+        AddStatsControl(AddLabel(win, box->left + 16, box->right - 16, box->top + 34, 16,
+                                  kThemeSystemFont, teFlushLeft,
+                                  "\064No players yet -- win or lose a game to get started."));
         return;
     }
 
-    rowY = box.top + 44;
+    rowY = box->top + 34;
     for (i = 0; i < gStats.playerCount; i++) {
         WordlePlayerStats *p = &gStats.players[i];
         short winPct = p->gamesPlayed
@@ -1065,24 +1058,24 @@ pascal void StatsContentDrawProc(DialogRef dlg, DialogItemIndex itemNo)
             : 0;
 
         CStrToPStr(s, p->name);
-        MoveTo(box.left + 16, rowY);
-        DrawString(s);
+        AddStatsControl(AddLabel(win, box->left + 16, box->left + 210, rowY, 16,
+                                  kThemeSystemFont, teFlushLeft, s));
 
         NumToString((long)p->gamesPlayed, s);
-        MoveTo(box.left + 220, rowY);
-        DrawString(s);
+        AddStatsControl(AddLabel(win, box->left + 220, box->left + 270, rowY, 16,
+                                  kThemeSystemFont, teFlushLeft, s));
 
         NumToString((long)winPct, s);
-        MoveTo(box.left + 280, rowY);
-        DrawString(s);
+        AddStatsControl(AddLabel(win, box->left + 280, box->left + 330, rowY, 16,
+                                  kThemeSystemFont, teFlushLeft, s));
 
         NumToString((long)p->currentStreak, s);
-        MoveTo(box.left + 335, rowY);
-        DrawString(s);
+        AddStatsControl(AddLabel(win, box->left + 335, box->left + 375, rowY, 16,
+                                  kThemeSystemFont, teFlushLeft, s));
 
         NumToString((long)p->maxStreak, s);
-        MoveTo(box.left + 380, rowY);
-        DrawString(s);
+        AddStatsControl(AddLabel(win, box->left + 380, box->right - 10, rowY, 16,
+                                  kThemeSystemFont, teFlushLeft, s));
 
         rowY += 18;
     }
@@ -1095,12 +1088,16 @@ static void OnStatistics(void)
     DialogItemType type;
     Handle itemH;
     Rect box;
+    WindowRef win;
 
     dlg = GetNewDialog(203, NULL, (WindowPtr)-1);
     if (dlg == NULL) return;
 
+    win = GetDialogWindow(dlg);
+    SetThemeWindowBackground(win, kThemeBrushDialogBackgroundActive, false);
+
     GetDialogItem(dlg, 1, &type, &itemH, &box);
-    SetDialogItem(dlg, 1, type, (Handle)NewUserItemUPP(&StatsContentDrawProc), &box);
+    BuildStatsContent(win, &box);
 
     ShowDialogWithDefaultButton(dlg, 3);
 
@@ -1111,10 +1108,12 @@ static void OnStatistics(void)
              * waiting for the next update event. */
             WordleStatsClear(&gStats);
             SaveStats();
+            BuildStatsContent(win, &box);
             ShowDialogWithDefaultButton(dlg, 3);
         }
     } while (item != 3);
 
+    ClearStatsContent();
     DisposeDialog(dlg);
     RedrawAll();
 }
