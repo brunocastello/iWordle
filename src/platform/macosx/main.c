@@ -124,7 +124,8 @@ static void GetBackspaceKeyRect(Rect *outRect);
 static void DrawBevelRect(const Rect *r, RGBColor fill);
 static void DrawCenteredLetter(const Rect *r, char letter, short fontSize, const RGBColor *color);
 static void DrawCenteredStringAt(short centerX, short baselineY, ConstStr255Param s);
-static void DrawExactText(short centerX, short baselineY, Boolean makeBold, ConstStr255Param s);
+static void AddAboutLine(WindowRef win, short left, short right, short top, short height,
+                          ThemeFontID themeFont, ConstStr255Param s);
 static void DrawTile(short row, short col);
 static void DrawKey(const Rect *r, char letter);
 static void DrawBoard(void);
@@ -260,80 +261,37 @@ static void DrawCenteredStringAt(short centerX, short baselineY, ConstStr255Para
     DrawString(s);
 }
 
-/* Neither plain QuickDraw DrawString() nor DrawThemeTextBox() got this
- * right across several rounds of testing: DrawString() doesn't reliably
- * antialias in this toolchain regardless of font selection, and
- * DrawThemeTextBox() only offers a small set of Apple-fixed
- * (ThemeFontID, size) combinations -- none of them is exactly "Lucida
- * Grande 14pt", which is what the real menu bar's text actually is, and
- * the one theme font pairing guaranteed to differ only by weight
- * (kThemeSystemFont/kThemeEmphasizedSystemFont) is fixed at 13pt, still
- * came out visibly rougher than real chrome, and doesn't match the real
- * menu bar's size either.
- *
- * ATSUI is what both of those higher-level APIs are actually built on,
- * so this calls it directly instead: full control over exact
- * family/size/weight, through the same antialiased Quartz text pipeline
- * real system chrome uses. ATSUFindFontFromName() looks up "Lucida
- * Grande" by its real ATS family name rather than the classic Font
- * Manager's name (which GetFNum() needs and, per prior testing, doesn't
- * resolve correctly in this toolchain regardless of spelling). */
-static void DrawExactText(short centerX, short baselineY, Boolean makeBold, ConstStr255Param s)
+/* Five rounds of hand-drawing this text (DrawString() with various font
+ * selections, DrawThemeTextBox(), raw ATSUI) each got some dimension
+ * wrong -- wrong typeface, wrong size, ignored weight, or, with raw
+ * ATSUI, excessive/doubled boldness. A real open-source Carbon PowerPC
+ * app's About window (snes9x's macosx port) doesn't hand-draw its text
+ * at all -- it uses genuine native controls, which the OS renders
+ * itself through the exact same pipeline as any other native UI text
+ * (including this dialog's own OK button, which has rendered correctly
+ * throughout all of this). CreateStaticTextControl() with
+ * kControlUseThemeFontIDMask does the same: the Control Manager owns
+ * the rendering, not this code, so there's no font/antialiasing
+ * decision left to get wrong. */
+static void AddAboutLine(WindowRef win, short left, short right, short top, short height,
+                          ThemeFontID themeFont, ConstStr255Param s)
 {
-    static const char kFontName[] = "Lucida Grande";
+    Rect r;
     CFStringRef cfStr;
-    CFIndex length;
-    UniChar buffer[256];
-    ATSUStyle style;
-    ATSUTextLayout layout;
-    ATSUFontID fontID;
-    Fixed fixedSize;
-    Boolean bold = makeBold;
-    ATSUAttributeTag tags[3] = { kATSUFontTag, kATSUSizeTag, kATSUQDBoldfaceTag };
-    ByteCount valueSizes[3] = { sizeof(ATSUFontID), sizeof(Fixed), sizeof(Boolean) };
-    ATSUAttributeValuePtr values[3];
-    UniCharCount runLength;
-    Fixed before, after, ascent, descent;
-    short textWidth, x;
+    ControlFontStyleRec style;
+    ControlRef ctl;
+
+    SetRect(&r, left, top, right, top + height);
 
     cfStr = CFStringCreateWithPascalString(NULL, s, kCFStringEncodingMacRoman);
     if (cfStr == NULL) return;
 
-    length = CFStringGetLength(cfStr);
-    if (length > 255) length = 255;
-    CFStringGetCharacters(cfStr, CFRangeMake(0, length), buffer);
+    style.flags = kControlUseThemeFontIDMask | kControlUseJustMask;
+    style.font = themeFont;
+    style.just = teCenter;
+
+    CreateStaticTextControl(win, &r, cfStr, &style, &ctl);
     CFRelease(cfStr);
-
-    if (ATSUFindFontFromName(kFontName, strlen(kFontName), kFontFamilyName,
-                              kFontNoPlatformCode, kFontNoScriptCode, kFontNoLanguageCode,
-                              &fontID) != noErr) {
-        return;
-    }
-
-    if (ATSUCreateStyle(&style) != noErr) return;
-
-    fixedSize = Long2Fix(14);
-    values[0] = &fontID;
-    values[1] = &fixedSize;
-    values[2] = &bold;
-    ATSUSetAttributes(style, 3, tags, valueSizes, values);
-
-    runLength = (UniCharCount)length;
-    if (ATSUCreateTextLayoutWithTextPtr(buffer, kATSUFromTextBeginning, runLength,
-                                         runLength, 1, &runLength, &style, &layout) != noErr) {
-        ATSUDisposeStyle(style);
-        return;
-    }
-
-    ATSUGetUnjustifiedBounds(layout, kATSUFromTextBeginning, kATSUToTextEnd,
-                              &before, &after, &ascent, &descent);
-    textWidth = Fix2Long(after - before);
-    x = centerX - textWidth / 2;
-
-    ATSUDrawText(layout, kATSUFromTextBeginning, kATSUToTextEnd, Long2Fix(x), Long2Fix(baselineY));
-
-    ATSUDisposeTextLayout(layout);
-    ATSUDisposeStyle(style);
 }
 
 static void DrawTile(short row, short col)
@@ -691,12 +649,13 @@ static void ShowMessage(ConstStr255Param msg)
 /* About dialog: icon, app name/version, author, credits, native button   */
 /* ---------------------------------------------------------------------- */
 
+/* Only the icon -- the text lines are real native controls now, added
+ * in OnAbout() via AddAboutLine(), not drawn here. */
 pascal void AboutContentDrawProc(DialogRef dlg, DialogItemIndex itemNo)
 {
     DialogItemType type;
     Handle itemH;
     Rect box, iconRect;
-    Str255 s;
     short midX;
 
     (void)itemNo;
@@ -709,31 +668,6 @@ pascal void AboutContentDrawProc(DialogRef dlg, DialogItemIndex itemNo)
 
     SetRect(&iconRect, midX - 16, box.top + 14, midX + 16, box.top + 46);
     PlotIconID(&iconRect, atNone, ttNone, 128);
-
-    /* Every line is Lucida Grande 14pt -- the real menu bar's own
-     * font/size, exactly -- bold for the three lines styled after the
-     * app-name menu title ("iWordle"), regular for the rest, styled
-     * after the other menu titles ("File"). See DrawExactText() above
-     * for why this goes through ATSUI directly. The OK button's own
-     * font is untouched -- it's a native control, not text this proc
-     * draws. */
-    CStrToPStr(s, "iWordle 1.0");
-    DrawExactText(midX, box.top + 64, true, s);
-
-    CStrToPStr(s, "A native Wordle clone for Mac OS X");
-    DrawExactText(midX, box.top + 84, false, s);
-
-    CStrToPStr(s, "Bruno Castello");
-    DrawExactText(midX, box.top + 112, true, s);
-
-    CStrToPStr(s, "bfcastello@hotmail.com");
-    DrawExactText(midX, box.top + 132, false, s);
-
-    CStrToPStr(s, "Engineer: Claude Sonnet 5");
-    DrawExactText(midX, box.top + 160, true, s);
-
-    CStrToPStr(s, "\xA9 Castello Designs, 2026");
-    DrawExactText(midX, box.top + 188, false, s);
 }
 
 /* ---------------------------------------------------------------------- */
@@ -820,12 +754,39 @@ static void OnAbout(void)
     DialogItemType type;
     Handle itemH;
     Rect box;
+    WindowRef win;
+    Str255 s;
 
     dlg = GetNewDialog(201, NULL, (WindowPtr)-1);
     if (dlg == NULL) return;
 
     GetDialogItem(dlg, 1, &type, &itemH, &box);
     SetDialogItem(dlg, 1, type, (Handle)NewUserItemUPP(&AboutContentDrawProc), &box);
+
+    /* Real native Static Text controls, not hand-drawn text -- see
+     * AddAboutLine() for why. kThemeEmphasizedSystemFont/kThemeSystemFont
+     * for bold/regular, matching the app-name vs. plain menu title
+     * distinction in the real menu bar (a 13pt system font, not the real
+     * menu bar's 14pt -- ThemeFontIDs only offer Apple's fixed sizes). */
+    win = GetDialogWindow(dlg);
+
+    CStrToPStr(s, "iWordle 1.0");
+    AddAboutLine(win, box.left, box.right, box.top + 50, 20, kThemeEmphasizedSystemFont, s);
+
+    CStrToPStr(s, "A native Wordle clone for Mac OS X");
+    AddAboutLine(win, box.left, box.right, box.top + 70, 20, kThemeSystemFont, s);
+
+    CStrToPStr(s, "Bruno Castello");
+    AddAboutLine(win, box.left, box.right, box.top + 98, 20, kThemeEmphasizedSystemFont, s);
+
+    CStrToPStr(s, "bfcastello@hotmail.com");
+    AddAboutLine(win, box.left, box.right, box.top + 118, 20, kThemeSystemFont, s);
+
+    CStrToPStr(s, "Engineer: Claude Sonnet 5");
+    AddAboutLine(win, box.left, box.right, box.top + 146, 20, kThemeEmphasizedSystemFont, s);
+
+    CStrToPStr(s, "\xA9 Castello Designs, 2026");
+    AddAboutLine(win, box.left, box.right, box.top + 174, 20, kThemeSystemFont, s);
 
     ShowDialogWithDefaultButton(dlg, 2);
 
