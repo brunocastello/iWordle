@@ -273,11 +273,16 @@ static void DrawCenteredStringAt(short centerX, short baselineY, ConstStr255Para
  * DrawThemeTextBox() ignores the port's TextFace() setting and always
  * renders a ThemeFontID in its own theme-defined weight -- confirmed by
  * screenshot: forcing TextFace(normal) before kThemeMenuTitleFont still
- * came out bold on every line. kThemeMenuTitleFont's own weight is bold
- * (the real menu bar's app-name style); kThemeMenuItemFont is the same
- * family/size tier but genuinely regular, matching a plain menu title
- * like "File" -- so weight is picked by which theme font ID is used,
- * not by any face override. */
+ * came out bold on every line. Switching the regular lines to
+ * kThemeMenuItemFont (assumed to be the same family/size tier as
+ * kThemeMenuTitleFont but regular) didn't fix it either -- still came
+ * out bold on every line, meaning that assumption was wrong too.
+ * kThemeSystemFont/kThemeEmphasizedSystemFont is the one theme font
+ * pairing Apple explicitly documents as identical except for weight
+ * (https://bugzilla.mozilla.org/show_bug.cgi?id=335683), so this uses
+ * that pairing instead of guessing at another one -- a 13pt system font
+ * rather than the real menu bar's 14pt, but with a guaranteed real
+ * weight difference between the two. */
 static void DrawMenuBarStyledText(const Rect *box, short topY, short height, Boolean makeBold, ConstStr255Param s)
 {
     CFStringRef cfStr = CFStringCreateWithPascalString(NULL, s, kCFStringEncodingMacRoman);
@@ -286,7 +291,7 @@ static void DrawMenuBarStyledText(const Rect *box, short topY, short height, Boo
     if (cfStr == NULL) return;
 
     SetRect(&lineBox, box->left, topY, box->right, topY + height);
-    DrawThemeTextBox(cfStr, makeBold ? kThemeMenuTitleFont : kThemeMenuItemFont,
+    DrawThemeTextBox(cfStr, makeBold ? kThemeEmphasizedSystemFont : kThemeSystemFont,
                       kThemeStateActive, false, &lineBox, teCenter, NULL);
     CFRelease(cfStr);
 }
@@ -665,14 +670,13 @@ pascal void AboutContentDrawProc(DialogRef dlg, DialogItemIndex itemNo)
     SetRect(&iconRect, midX - 16, box.top + 14, midX + 16, box.top + 46);
     PlotIconID(&iconRect, atNone, ttNone, 128);
 
-    /* Every line is the real menu bar's own font/size tier -- bold
-     * (kThemeMenuTitleFont) for the three lines styled after the app-name
-     * menu title ("iWordle"), regular (kThemeMenuItemFont) for the rest,
-     * styled after the other menu titles ("File"). See
-     * DrawMenuBarStyledText() above for why this goes through
-     * DrawThemeTextBox() rather than TextFont()+DrawString(). The OK
-     * button's own font is untouched -- it's a native control, not text
-     * this proc draws. */
+    /* Bold (kThemeEmphasizedSystemFont) for the three lines styled after
+     * the app-name menu title ("iWordle"), regular (kThemeSystemFont)
+     * for the rest, styled after the other menu titles ("File"). See
+     * DrawMenuBarStyledText() above for why this pairing was picked and
+     * why this goes through DrawThemeTextBox() rather than
+     * TextFont()+DrawString(). The OK button's own font is untouched --
+     * it's a native control, not text this proc draws. */
     CStrToPStr(s, "iWordle 1.0");
     DrawMenuBarStyledText(&box, box.top + 50, 20, true, s);
 
