@@ -569,8 +569,7 @@ static void ShowMessage(ConstStr255Param msg)
     ChangeWindowAttributes(w, 0, kWindowResizableAttribute);
 
     GetPortBounds(GetWindowPort(w), &windowRect);
-    AddLabel(w, windowRect.left, windowRect.right,
-              (windowRect.bottom - windowRect.top) / 2 - 20, 20,
+    AddLabel(w, windowRect.left, windowRect.right, 30, 20,
               kThemeAlertHeaderFont, teCenter, msg);
 
     /* Rect matches the old DITL button's box exactly. */
@@ -898,18 +897,6 @@ static Boolean PromptForPlayerName(Str255 outName)
     SetRect(&fieldRect, 60, 67, 260, 85);
     gNameFieldControl = NewControl(w, &fieldRect, "\000", true, 0, 0, 0, kControlEditTextProc, 0L);
 
-    /* NewControl()'s Edit Text defaults to a generic/non-native font in
-     * this toolchain (same underlying issue as every other hand-picked
-     * font in this file -- see [[project_theme_font_unreliable]]) --
-     * kThemeSystemFont via SetControlFontStyle() is what a real Aqua
-     * text field actually uses. */
-    if (gNameFieldControl != NULL) {
-        ControlFontStyleRec fieldStyle;
-        fieldStyle.flags = kControlUseThemeFontIDMask;
-        fieldStyle.font = kThemeSystemFont;
-        SetControlFontStyle(gNameFieldControl, &fieldStyle);
-    }
-
     /* Standard Aqua push button height (20px). */
     SetRect(&okRect, 125, 120, 195, 140);
     gNameOKControl = NewControl(w, &okRect, "\002OK", true, 0, 0, 0, kControlPushButtonProc, 0L);
@@ -918,6 +905,20 @@ static Boolean PromptForPlayerName(Str255 outName)
     if (gNameFieldControl != NULL && gLastPlayerName[0] > 0) {
         SetControlData(gNameFieldControl, kControlEditTextPart, kControlEditTextTextTag,
                         gLastPlayerName[0], (Ptr)(gLastPlayerName + 1));
+    }
+
+    /* NewControl()'s Edit Text defaults to a generic/non-native font in
+     * this toolchain (same underlying issue as every other hand-picked
+     * font in this file -- see [[project_theme_font_unreliable]]) --
+     * kThemeSystemFont via SetControlFontStyle() is what a real Aqua
+     * text field actually uses. Applied last, after the text content is
+     * set: setting kControlEditTextTextTag resets the control's font
+     * style back to default, so a style set before it gets clobbered. */
+    if (gNameFieldControl != NULL) {
+        ControlFontStyleRec fieldStyle;
+        fieldStyle.flags = kControlUseThemeFontIDMask;
+        fieldStyle.font = kThemeSystemFont;
+        SetControlFontStyle(gNameFieldControl, &fieldStyle);
     }
 
     ShowWindow(w);
@@ -1067,6 +1068,25 @@ static void BuildStatsContent(WindowRef win, const Rect *box)
     ControlRef sep;
 
     ClearStatsContent();
+
+    /* DisposeControl() (inside ClearStatsContent()) doesn't repaint the
+     * area the disposed controls occupied -- their old pixels (a
+     * previous run's player rows) were left on screen underneath the
+     * new controls, since the new "no players" line doesn't cover the
+     * same rect the old rows did. Erasing the whole content area first
+     * guarantees a clean slate before anything new is drawn.
+     * GetThemeBrushAsColor() looks up the exact native background color
+     * explicitly (kThemeBrushDialogBackgroundActive, matching the
+     * SetThemeWindowBackground() call in OnStatistics()) rather than
+     * assuming EraseRect()'s default background is already correct. */
+    SetPortWindowPort(win);
+    {
+        RGBColor bgColor;
+        if (GetThemeBrushAsColor(kThemeBrushDialogBackgroundActive, 32, true, &bgColor) == noErr) {
+            RGBBackColor(&bgColor);
+        }
+    }
+    EraseRect(box);
 
     AddStatsControl(AddLabel(win, box->left + 16, box->left + 210, box->top + 8, 16,
                               kThemeEmphasizedSystemFont, teFlushLeft, "\004Name"));
