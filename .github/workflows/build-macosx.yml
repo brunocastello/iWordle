@@ -123,6 +123,35 @@ jobs:
           # template and grows it, rather than formatting one from
           # scratch.
           cp /tmp/libdmg-hfsplus/test/empty.hfs package/iWordle.hfs
+          # empty.hfs is a real volume from libdmg-hfsplus's own test
+          # suite, named "Firefox" for whatever they were testing against
+          # -- not something we chose, and hfsplus has no rename/label
+          # verb to fix it with (its "mv" isn't safe to point at the
+          # root: it looks up the source's *parent* folder record to
+          # validate the move, and root's parent bookkeeping is a special
+          # ID, not a normal folder, so it's not what that codepath was
+          # built for). "Firefox" and "iWordle" are both 7 characters, so
+          # this patches the volume name in place instead: identical
+          # UTF-16BE byte length means the catalog B-tree's stored
+          # nodeName.length and every node offset stays valid, no
+          # restructuring needed. Verified against the actual template
+          # this step downloads: exactly two occurrences (the root
+          # folder's catalog record and its reverse-lookup thread record
+          # -- the only two places any HFS+ entry's name is stored), each
+          # immediately preceded by the matching length-prefix byte.
+          python3 - <<'PYEOF'
+          path = "package/iWordle.hfs"
+          with open(path, "rb") as f:
+              data = f.read()
+          old = "Firefox".encode("utf-16-be")
+          new = "iWordle".encode("utf-16-be")
+          assert len(old) == len(new)
+          count = data.count(old)
+          assert count == 2, f"expected exactly 2 occurrences of Firefox, found {count}"
+          data = data.replace(old, new)
+          with open(path, "wb") as f:
+              f.write(data)
+          PYEOF
           hfsplus package/iWordle.hfs grow 8388608
           # addall merges the CONTENTS of the source dir into an
           # already-existing destination folder on the volume -- it
