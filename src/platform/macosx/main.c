@@ -124,7 +124,7 @@ static void GetBackspaceKeyRect(Rect *outRect);
 static void DrawBevelRect(const Rect *r, RGBColor fill);
 static void DrawCenteredLetter(const Rect *r, char letter, short fontSize, const RGBColor *color);
 static void DrawCenteredStringAt(short centerX, short baselineY, ConstStr255Param s);
-static void DrawMenuBarStyledText(const Rect *box, short topY, short height, Boolean makeBold, ConstStr255Param s);
+static void DrawExactText(short centerX, short baselineY, Boolean makeBold, ConstStr255Param s);
 static void DrawTile(short row, short col);
 static void DrawKey(const Rect *r, char letter);
 static void DrawBoard(void);
@@ -260,40 +260,80 @@ static void DrawCenteredStringAt(short centerX, short baselineY, ConstStr255Para
     DrawString(s);
 }
 
-/* Plain QuickDraw DrawString() doesn't reliably come out antialiased in
- * this Carbon/toolchain combination no matter which font is selected on
- * the port first -- confirmed by screenshot: every earlier attempt
- * (GetFNum() by name, UseThemeFont() then DrawString()) rendered
- * visibly jagged and not even the same typeface as the real menu bar or
- * Finder sidebar, which aren't drawn with DrawString() at all --
- * they go through HIToolbox's own themed text renderer. DrawThemeTextBox()
- * uses that same native rendering path, so this draws every About window
- * line through it instead.
+/* Neither plain QuickDraw DrawString() nor DrawThemeTextBox() got this
+ * right across several rounds of testing: DrawString() doesn't reliably
+ * antialias in this toolchain regardless of font selection, and
+ * DrawThemeTextBox() only offers a small set of Apple-fixed
+ * (ThemeFontID, size) combinations -- none of them is exactly "Lucida
+ * Grande 14pt", which is what the real menu bar's text actually is, and
+ * the one theme font pairing guaranteed to differ only by weight
+ * (kThemeSystemFont/kThemeEmphasizedSystemFont) is fixed at 13pt, still
+ * came out visibly rougher than real chrome, and doesn't match the real
+ * menu bar's size either.
  *
- * DrawThemeTextBox() ignores the port's TextFace() setting and always
- * renders a ThemeFontID in its own theme-defined weight -- confirmed by
- * screenshot: forcing TextFace(normal) before kThemeMenuTitleFont still
- * came out bold on every line. Switching the regular lines to
- * kThemeMenuItemFont (assumed to be the same family/size tier as
- * kThemeMenuTitleFont but regular) didn't fix it either -- still came
- * out bold on every line, meaning that assumption was wrong too.
- * kThemeSystemFont/kThemeEmphasizedSystemFont is the one theme font
- * pairing Apple explicitly documents as identical except for weight
- * (https://bugzilla.mozilla.org/show_bug.cgi?id=335683), so this uses
- * that pairing instead of guessing at another one -- a 13pt system font
- * rather than the real menu bar's 14pt, but with a guaranteed real
- * weight difference between the two. */
-static void DrawMenuBarStyledText(const Rect *box, short topY, short height, Boolean makeBold, ConstStr255Param s)
+ * ATSUI is what both of those higher-level APIs are actually built on,
+ * so this calls it directly instead: full control over exact
+ * family/size/weight, through the same antialiased Quartz text pipeline
+ * real system chrome uses. ATSUFindFontFromName() looks up "Lucida
+ * Grande" by its real ATS family name rather than the classic Font
+ * Manager's name (which GetFNum() needs and, per prior testing, doesn't
+ * resolve correctly in this toolchain regardless of spelling). */
+static void DrawExactText(short centerX, short baselineY, Boolean makeBold, ConstStr255Param s)
 {
-    CFStringRef cfStr = CFStringCreateWithPascalString(NULL, s, kCFStringEncodingMacRoman);
-    Rect lineBox;
+    static const char kFontName[] = "Lucida Grande";
+    CFStringRef cfStr;
+    CFIndex length;
+    UniChar buffer[256];
+    ATSUStyle style;
+    ATSUTextLayout layout;
+    ATSUFontID fontID;
+    Fixed fixedSize;
+    Boolean bold = makeBold;
+    ATSUAttributeTag tags[3] = { kATSUFontTag, kATSUSizeTag, kATSUQDBoldfaceTag };
+    ByteCount valueSizes[3] = { sizeof(ATSUFontID), sizeof(Fixed), sizeof(Boolean) };
+    ATSUAttributeValuePtr values[3];
+    UniCharCount runLength;
+    Fixed before, after, ascent, descent;
+    short textWidth, x;
 
+    cfStr = CFStringCreateWithPascalString(NULL, s, kCFStringEncodingMacRoman);
     if (cfStr == NULL) return;
 
-    SetRect(&lineBox, box->left, topY, box->right, topY + height);
-    DrawThemeTextBox(cfStr, makeBold ? kThemeEmphasizedSystemFont : kThemeSystemFont,
-                      kThemeStateActive, false, &lineBox, teCenter, NULL);
+    length = CFStringGetLength(cfStr);
+    if (length > 255) length = 255;
+    CFStringGetCharacters(cfStr, CFRangeMake(0, length), buffer);
     CFRelease(cfStr);
+
+    if (ATSUFindFontFromName(kFontName, strlen(kFontName), kFontFamilyName,
+                              kFontNoPlatformCode, kFontNoScriptCode, kFontNoLanguageCode,
+                              &fontID) != noErr) {
+        return;
+    }
+
+    if (ATSUCreateStyle(&style) != noErr) return;
+
+    fixedSize = Long2Fix(14);
+    values[0] = &fontID;
+    values[1] = &fixedSize;
+    values[2] = &bold;
+    ATSUSetAttributes(style, 3, tags, valueSizes, values);
+
+    runLength = (UniCharCount)length;
+    if (ATSUCreateTextLayoutWithTextPtr(buffer, kATSUFromTextBeginning, runLength,
+                                         runLength, 1, &runLength, &style, &layout) != noErr) {
+        ATSUDisposeStyle(style);
+        return;
+    }
+
+    ATSUGetUnjustifiedBounds(layout, kATSUFromTextBeginning, kATSUToTextEnd,
+                              &before, &after, &ascent, &descent);
+    textWidth = Fix2Long(after - before);
+    x = centerX - textWidth / 2;
+
+    ATSUDrawText(layout, kATSUFromTextBeginning, kATSUToTextEnd, Long2Fix(x), Long2Fix(baselineY));
+
+    ATSUDisposeTextLayout(layout);
+    ATSUDisposeStyle(style);
 }
 
 static void DrawTile(short row, short col)
@@ -670,30 +710,30 @@ pascal void AboutContentDrawProc(DialogRef dlg, DialogItemIndex itemNo)
     SetRect(&iconRect, midX - 16, box.top + 14, midX + 16, box.top + 46);
     PlotIconID(&iconRect, atNone, ttNone, 128);
 
-    /* Bold (kThemeEmphasizedSystemFont) for the three lines styled after
-     * the app-name menu title ("iWordle"), regular (kThemeSystemFont)
-     * for the rest, styled after the other menu titles ("File"). See
-     * DrawMenuBarStyledText() above for why this pairing was picked and
-     * why this goes through DrawThemeTextBox() rather than
-     * TextFont()+DrawString(). The OK button's own font is untouched --
-     * it's a native control, not text this proc draws. */
+    /* Every line is Lucida Grande 14pt -- the real menu bar's own
+     * font/size, exactly -- bold for the three lines styled after the
+     * app-name menu title ("iWordle"), regular for the rest, styled
+     * after the other menu titles ("File"). See DrawExactText() above
+     * for why this goes through ATSUI directly. The OK button's own
+     * font is untouched -- it's a native control, not text this proc
+     * draws. */
     CStrToPStr(s, "iWordle 1.0");
-    DrawMenuBarStyledText(&box, box.top + 50, 20, true, s);
+    DrawExactText(midX, box.top + 64, true, s);
 
     CStrToPStr(s, "A native Wordle clone for Mac OS X");
-    DrawMenuBarStyledText(&box, box.top + 70, 20, false, s);
+    DrawExactText(midX, box.top + 84, false, s);
 
     CStrToPStr(s, "Bruno Castello");
-    DrawMenuBarStyledText(&box, box.top + 98, 20, true, s);
+    DrawExactText(midX, box.top + 112, true, s);
 
     CStrToPStr(s, "bfcastello@hotmail.com");
-    DrawMenuBarStyledText(&box, box.top + 118, 20, false, s);
+    DrawExactText(midX, box.top + 132, false, s);
 
     CStrToPStr(s, "Engineer: Claude Sonnet 5");
-    DrawMenuBarStyledText(&box, box.top + 146, 20, true, s);
+    DrawExactText(midX, box.top + 160, true, s);
 
     CStrToPStr(s, "\xA9 Castello Designs, 2026");
-    DrawMenuBarStyledText(&box, box.top + 174, 20, false, s);
+    DrawExactText(midX, box.top + 188, false, s);
 }
 
 /* ---------------------------------------------------------------------- */
