@@ -124,8 +124,7 @@ static void GetBackspaceKeyRect(Rect *outRect);
 static void DrawBevelRect(const Rect *r, RGBColor fill);
 static void DrawCenteredLetter(const Rect *r, char letter, short fontSize, const RGBColor *color);
 static void DrawCenteredStringAt(short centerX, short baselineY, ConstStr255Param s);
-static void UseAboutHeadlineFont(void);
-static void UseAboutDetailFont(void);
+static void DrawMenuBarStyledText(const Rect *box, short topY, short height, Boolean makeBold, ConstStr255Param s);
 static void DrawTile(short row, short col);
 static void DrawKey(const Rect *r, char letter);
 static void DrawBoard(void);
@@ -261,27 +260,28 @@ static void DrawCenteredStringAt(short centerX, short baselineY, ConstStr255Para
     DrawString(s);
 }
 
-/* UseThemeFont() -- not GetFNum() -- is what actually resolves to the
- * real antialiased TrueType system font here. Every earlier attempt that
- * routed through GetFNum() by name (hardcoded "Lucida Grande",
- * "LucidaGrande", even the theme's own reported name) rendered as
- * jagged/non-antialiased on real hardware, meaning GetFNum() was
- * silently landing on some bitmap fallback font in this toolchain no
- * matter what name it was given -- so this leaves font resolution to
- * the Appearance Manager entirely instead of trying to reproduce its
- * result by hand. kThemeMenuTitleFont is the app-name-style menu bar
- * font (forced bold for the About window's headline lines);
- * kThemeViewsFont is the font Finder's own sidebar list uses (for
- * everything else). */
-static void UseAboutHeadlineFont(void)
+/* Plain QuickDraw DrawString() doesn't reliably come out antialiased in
+ * this Carbon/toolchain combination no matter which font is selected on
+ * the port first -- confirmed by screenshot: every earlier attempt
+ * (GetFNum() by name, UseThemeFont() then DrawString()) rendered
+ * visibly jagged and not even the same typeface as the real menu bar or
+ * Finder sidebar, which aren't drawn with DrawString() at all --
+ * they go through HIToolbox's own themed text renderer. DrawThemeTextBox()
+ * uses that same native rendering path, so this draws every About window
+ * line through it instead. kThemeMenuTitleFont is literally the real menu
+ * bar's own font/size; TextFace(bold) beforehand matches the app-name
+ * menu title, TextFace(normal) matches the other menu titles ("File"). */
+static void DrawMenuBarStyledText(const Rect *box, short topY, short height, Boolean makeBold, ConstStr255Param s)
 {
-    UseThemeFont(kThemeMenuTitleFont, smSystemScript);
-    TextFace(bold);
-}
+    CFStringRef cfStr = CFStringCreateWithPascalString(NULL, s, kCFStringEncodingMacRoman);
+    Rect lineBox;
 
-static void UseAboutDetailFont(void)
-{
-    UseThemeFont(kThemeViewsFont, smSystemScript);
+    if (cfStr == NULL) return;
+
+    SetRect(&lineBox, box->left, topY, box->right, topY + height);
+    TextFace(makeBold ? bold : normal);
+    DrawThemeTextBox(cfStr, kThemeMenuTitleFont, kThemeStateActive, false, &lineBox, teCenter, NULL);
+    CFRelease(cfStr);
 }
 
 static void DrawTile(short row, short col)
@@ -658,34 +658,30 @@ pascal void AboutContentDrawProc(DialogRef dlg, DialogItemIndex itemNo)
     SetRect(&iconRect, midX - 16, box.top + 14, midX + 16, box.top + 46);
     PlotIconID(&iconRect, atNone, ttNone, 128);
 
-    /* Headline lines styled after the app-name menu title ("iWordle");
-     * everything else styled after the Finder sidebar list -- see
-     * UseAboutHeadlineFont()/UseAboutDetailFont() above. The OK button's
-     * own font is untouched -- it's a native control, not text this proc
-     * draws. */
-    UseAboutHeadlineFont();
+    /* Every line is the real menu bar's own font/size (kThemeMenuTitleFont)
+     * -- bold for the three lines styled after the app-name menu title
+     * ("iWordle"), regular for the rest, styled after the other menu
+     * titles ("File"). See DrawMenuBarStyledText() above for why this
+     * goes through DrawThemeTextBox() rather than TextFont()+DrawString().
+     * The OK button's own font is untouched -- it's a native control, not
+     * text this proc draws. */
     CStrToPStr(s, "iWordle 1.0");
-    DrawCenteredStringAt(midX, box.top + 64, s);
+    DrawMenuBarStyledText(&box, box.top + 50, 20, true, s);
 
-    UseAboutDetailFont();
     CStrToPStr(s, "A native Wordle clone for Mac OS X");
-    DrawCenteredStringAt(midX, box.top + 84, s);
+    DrawMenuBarStyledText(&box, box.top + 70, 20, false, s);
 
-    UseAboutHeadlineFont();
     CStrToPStr(s, "Bruno Castello");
-    DrawCenteredStringAt(midX, box.top + 112, s);
+    DrawMenuBarStyledText(&box, box.top + 98, 20, true, s);
 
-    UseAboutDetailFont();
     CStrToPStr(s, "bfcastello@hotmail.com");
-    DrawCenteredStringAt(midX, box.top + 132, s);
+    DrawMenuBarStyledText(&box, box.top + 118, 20, false, s);
 
-    UseAboutHeadlineFont();
     CStrToPStr(s, "Engineer: Claude Sonnet 5");
-    DrawCenteredStringAt(midX, box.top + 160, s);
+    DrawMenuBarStyledText(&box, box.top + 146, 20, true, s);
 
-    UseAboutDetailFont();
     CStrToPStr(s, "\xA9 Castello Designs, 2026");
-    DrawCenteredStringAt(midX, box.top + 188, s);
+    DrawMenuBarStyledText(&box, box.top + 174, 20, false, s);
 }
 
 /* ---------------------------------------------------------------------- */
