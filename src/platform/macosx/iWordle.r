@@ -118,7 +118,7 @@ resource 'DITL' (200) {
  * WaitNextEvent loop with real native controls, no DITL at all. Starts
  * invisible; OnAbout() shows it only once its controls are set up. */
 resource 'WIND' (201, "About iWordle") {
-    { 0, 0, 280, 280 },
+    { 0, 0, 205, 280 },
     documentProc,
     invisible,
     goAway,

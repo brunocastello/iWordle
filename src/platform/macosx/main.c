@@ -749,6 +749,13 @@ static void OnAbout(void)
     win = GetNewCWindow(201, NULL, (WindowPtr)-1);
     if (win == NULL) return;
 
+    /* Real native Aqua panel background (the light gray every native
+     * About window uses), not the plain white a document window gets by
+     * default. kThemeBrushModelessDialogBackgroundActive is Apple's own
+     * documented pairing for a non-modal document-class window like this
+     * one (Appearance.h: "use with kDocumentWindowClass"). */
+    SetThemeWindowBackground(win, kThemeBrushModelessDialogBackgroundActive, false);
+
     GetPortBounds(GetWindowPort(win), &windowRect);
     midX = (windowRect.right - windowRect.left) / 2;
 
@@ -757,28 +764,31 @@ static void OnAbout(void)
     iconContent.u.resID = 128;
     CreateIconControl(win, &iconRect, &iconContent, false, &iconControl);
 
-    /* kThemeWindowTitleFont (bold, one size tier up from
-     * kThemeEmphasizedSystemFont) for the headline lines, kThemeSystemFont
-     * (regular) for the rest -- both real SDK-provided ThemeFontIDs, not
-     * a hand-picked point size. See AddAboutLine() for why these are
-     * real Static Text controls rather than hand-drawn text. */
+    /* kThemeAlertHeaderFont -- documented as "the font used to draw the
+     * first (and most important) message of an alert window" -- for the
+     * headline lines: genuinely bold (unlike kThemeWindowTitleFont, which
+     * per Appearance.h is never documented as bold, hence it not
+     * rendering bold before) and sized like a real About panel's app
+     * name/credit lines, matching TextEdit's own About window.
+     * kThemeSmallSystemFont -- documented as "slightly smaller...
+     * compared to kThemeSystemFont" -- one size down for the rest. */
     CStrToPStr(s, "iWordle 1.0");
-    AddAboutLine(win, windowRect.left, windowRect.right, 50, 20, kThemeWindowTitleFont, s);
+    AddAboutLine(win, windowRect.left, windowRect.right, 54, 20, kThemeAlertHeaderFont, s);
 
     CStrToPStr(s, "A native Wordle clone for Mac OS X");
-    AddAboutLine(win, windowRect.left, windowRect.right, 70, 20, kThemeSystemFont, s);
+    AddAboutLine(win, windowRect.left, windowRect.right, 74, 18, kThemeSmallSystemFont, s);
 
     CStrToPStr(s, "Bruno Castello");
-    AddAboutLine(win, windowRect.left, windowRect.right, 98, 20, kThemeWindowTitleFont, s);
+    AddAboutLine(win, windowRect.left, windowRect.right, 100, 20, kThemeAlertHeaderFont, s);
 
     CStrToPStr(s, "bfcastello@hotmail.com");
-    AddAboutLine(win, windowRect.left, windowRect.right, 118, 20, kThemeSystemFont, s);
+    AddAboutLine(win, windowRect.left, windowRect.right, 120, 18, kThemeSmallSystemFont, s);
 
     CStrToPStr(s, "Engineer: Claude Sonnet 5");
-    AddAboutLine(win, windowRect.left, windowRect.right, 146, 20, kThemeWindowTitleFont, s);
+    AddAboutLine(win, windowRect.left, windowRect.right, 146, 20, kThemeAlertHeaderFont, s);
 
     CStrToPStr(s, "\xA9 Castello Designs, 2026");
-    AddAboutLine(win, windowRect.left, windowRect.right, 174, 20, kThemeSystemFont, s);
+    AddAboutLine(win, windowRect.left, windowRect.right, 172, 18, kThemeSmallSystemFont, s);
 
     ShowWindow(win);
     SelectWindow(win);
