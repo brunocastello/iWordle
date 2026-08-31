@@ -1014,7 +1014,9 @@ static Boolean PromptForPlayerName(Str255 outName)
 }
 
 /* Prompts for a name and records won/lost against it. Skips recording
- * entirely if the name field was left blank. */
+ * entirely if the name field was left blank -- opening Ranking
+ * afterward is conditioned on actually reaching SaveStats() for the
+ * same reason: nothing was saved, so there's nothing new to show. */
 static void RecordGameResult(Boolean won)
 {
     Str255 name;
@@ -1026,6 +1028,8 @@ static void RecordGameResult(Boolean won)
     WordleStatsRecordResult(&gStats, cname, won);
     PStrCopy(gLastPlayerName, name);
     SaveStats();
+
+    OnStatistics();
 }
 
 /* Bounded by WORDLE_STATS_MAX_PLAYERS (10): at most 5 header labels + 1
@@ -1152,103 +1156,124 @@ static void BuildStatsContent(WindowRef win, const Rect *box)
  * window didn't respect SetThemeWindowBackground(). */
 static void OnStatistics(void)
 {
-    WindowPtr w;
-    Rect windowRect, box, clearRect, okRect;
-    ControlHandle clearControl, okControl;
-    Boolean done = false;
-    EventRecord event;
+    Boolean reopen;
 
-    w = GetNewCWindow(203, NULL, (WindowPtr)-1);
-    if (w == NULL) return;
-
-    SetThemeWindowBackground(w, kThemeBrushDialogBackgroundActive, false);
-    ChangeWindowAttributes(w, 0, kWindowResizableAttribute);
-
-    GetPortBounds(GetWindowPort(w), &windowRect);
-    box = windowRect;
-    box.bottom -= 50; /* Reserve room for the buttons below the table --
-                        * matches the old DITL content item's rect within
-                        * the 300pt-tall window. */
-    BuildStatsContent(w, &box);
-
-    SetRect(&clearRect, 30, 264, 110, 284);
-    clearControl = NewControl(w, &clearRect, "\005Clear", true, 0, 0, 0, kControlPushButtonProc, 0L);
-
-    SetRect(&okRect, 320, 264, 390, 284);
-    okControl = NewControl(w, &okRect, "\002OK", true, 0, 0, 0, kControlPushButtonProc, 0L);
-    SetWindowDefaultButton(w, okControl);
-
-    ShowWindow(w);
-    SelectWindow(w);
-
+    /* Clear tears down this whole window and loops back to build a
+     * completely fresh one, rather than calling BuildStatsContent()
+     * again on the same window. Two earlier fixes assumed
+     * DisposeControl() (inside ClearStatsContent()) properly removes
+     * the old row controls it's given -- an EraseRect() before
+     * rebuilding, then more height in case of word-wrap -- and neither
+     * one fixed the garbled leftover text after Clear (confirmed by
+     * screenshot both times), which means DisposeControl() likely isn't
+     * actually removing those controls from the window in this
+     * toolchain. Destroying the entire window guarantees a clean slate
+     * regardless of that. */
     do {
-        WaitNextEvent(everyEvent, &event, 15, NULL);
+        WindowPtr w;
+        Rect windowRect, box, clearRect, okRect;
+        ControlHandle clearControl, okControl;
+        Boolean done = false;
+        EventRecord event;
 
-        switch (event.what) {
-            case updateEvt:
-                if ((WindowPtr)event.message == w) {
-                    BeginUpdate(w);
-                    DrawControls(w);
-                    if (okControl != NULL) Draw1Control(okControl);
-                    EndUpdate(w);
-                }
-                break;
+        reopen = false;
 
-            case keyDown:
-            case autoKey: {
-                char c = (char)(event.message & charCodeMask);
-                if (c == '\r' || c == 3) {
-                    done = true;
-                }
-                break;
-            }
+        w = GetNewCWindow(203, NULL, (WindowPtr)-1);
+        if (w == NULL) return;
 
-            case mouseDown: {
-                WindowPtr whichWindow;
-                short part = FindWindow(event.where, &whichWindow);
+        SetThemeWindowBackground(w, kThemeBrushDialogBackgroundActive, false);
+        ChangeWindowAttributes(w, 0, kWindowResizableAttribute);
 
-                if (whichWindow != w) {
-                    if (part == inMenuBar) {
-                        HiliteMenu(0);
-                    } else {
-                        SelectWindow(w);
+        GetPortBounds(GetWindowPort(w), &windowRect);
+        box = windowRect;
+        box.bottom -= 50; /* Reserve room for the buttons below the table --
+                            * matches the old DITL content item's rect within
+                            * the 300pt-tall window. */
+        BuildStatsContent(w, &box);
+
+        SetRect(&clearRect, 30, 264, 110, 284);
+        clearControl = NewControl(w, &clearRect, "\005Clear", true, 0, 0, 0, kControlPushButtonProc, 0L);
+
+        SetRect(&okRect, 320, 264, 390, 284);
+        okControl = NewControl(w, &okRect, "\002OK", true, 0, 0, 0, kControlPushButtonProc, 0L);
+        SetWindowDefaultButton(w, okControl);
+
+        ShowWindow(w);
+        SelectWindow(w);
+
+        do {
+            WaitNextEvent(everyEvent, &event, 15, NULL);
+
+            switch (event.what) {
+                case updateEvt:
+                    if ((WindowPtr)event.message == w) {
+                        BeginUpdate(w);
+                        DrawControls(w);
+                        if (okControl != NULL) Draw1Control(okControl);
+                        EndUpdate(w);
+                    }
+                    break;
+
+                case keyDown:
+                case autoKey: {
+                    char c = (char)(event.message & charCodeMask);
+                    if (c == '\r' || c == 3) {
+                        done = true;
                     }
                     break;
                 }
 
-                if (part == inContent) {
-                    Point local = event.where;
-                    ControlHandle hitControl = NULL;
+                case mouseDown: {
+                    WindowPtr whichWindow;
+                    short part = FindWindow(event.where, &whichWindow);
 
-                    SetPortWindowPort(w);
-                    GlobalToLocal(&local);
-                    FindControl(local, w, &hitControl);
-
-                    if (hitControl == clearControl) {
-                        if (TrackControl(clearControl, local, NULL) != 0) {
-                            /* Force the redraw ourselves rather than
-                             * invalidating and waiting for the next
-                             * update event. */
-                            WordleStatsClear(&gStats);
-                            SaveStats();
-                            BuildStatsContent(w, &box);
+                    if (whichWindow != w) {
+                        if (part == inMenuBar) {
+                            HiliteMenu(0);
+                        } else {
+                            SelectWindow(w);
                         }
-                    } else if (hitControl == okControl) {
-                        if (TrackControl(okControl, local, NULL) != 0) {
-                            done = true;
+                        break;
+                    }
+
+                    if (part == inContent) {
+                        Point local = event.where;
+                        ControlHandle hitControl = NULL;
+
+                        SetPortWindowPort(w);
+                        GlobalToLocal(&local);
+                        FindControl(local, w, &hitControl);
+
+                        if (hitControl == clearControl) {
+                            if (TrackControl(clearControl, local, NULL) != 0) {
+                                WordleStatsClear(&gStats);
+                                SaveStats();
+                                done = true;
+                                reopen = true;
+                            }
+                        } else if (hitControl == okControl) {
+                            if (TrackControl(okControl, local, NULL) != 0) {
+                                done = true;
+                            }
                         }
                     }
+                    break;
                 }
-                break;
+
+                default:
+                    break;
             }
+        } while (!done);
 
-            default:
-                break;
-        }
-    } while (!done);
+        /* gStatsContentControls[] holds ControlRefs owned by this
+         * window; DisposeWindow() frees them all as part of tearing the
+         * whole window down, so just forget about them here instead of
+         * calling DisposeControl() on now-dangling pointers next time
+         * BuildStatsContent() calls ClearStatsContent(). */
+        gStatsContentCount = 0;
+        DisposeWindow(w);
+    } while (reopen);
 
-    ClearStatsContent();
-    DisposeWindow(w);
     RedrawAll();
 }
 
