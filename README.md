@@ -1,34 +1,74 @@
 # iWordle
 
-A native Wordle clone for Classic Mac OS, built for PowerPC (G3/G4) hardware
-with the [Retro68](https://github.com/autc04/Retro68) cross-toolchain and
-styled after the Mac OS 9.2 Platinum theme. See [`PROJECT.md`](PROJECT.md)
-for the full design spec and [`CLAUDE.md`](CLAUDE.md) for the technical
-constraints this codebase follows.
+A native Wordle clone for classic Mac OS, built for PowerPC hardware and
+styled after the Mac OS 9.2 Platinum theme (Mac OS 9) / genuine Aqua chrome
+(Mac OS X). Two independent builds ship from this one repo:
 
-Nothing is compiled locally: every push is built by GitHub Actions inside
-the official Retro68 Carbon/PowerPC toolchain container, and the resulting
-disk image is uploaded as a workflow artifact.
+- **Mac OS 9** (`src/platform/macos9/`) — built with the
+  [Retro68](https://github.com/autc04/Retro68) cross-toolchain, targeting
+  Carbon on Mac OS 9.x PowerPC hardware.
+- **Mac OS X 10.0–10.5** (`src/platform/macosx/`) — built with a
+  `powerpc-apple-darwin8` GCC cross-compiler against Apple's real
+  `MacOSX10.4u.sdk`, producing a genuine Mach-O `.app` bundle.
+
+These are not a single "fat" binary and can't be — Mac OS 9 uses the classic
+PEF/CFM executable format and Mac OS X uses Mach-O, two container formats
+neither OS's loader understands from the other, independent of both targets
+sharing the same PowerPC instruction set.
+
+Prebuilt binaries for both platforms are published on the
+[Releases](../../releases) page. See [`PROJECT.md`](PROJECT.md) for the
+design spec and [`CLAUDE.md`](CLAUDE.md) for the technical constraints this
+codebase follows.
+
+Nothing is compiled locally: every push is built by GitHub Actions, and the
+resulting binaries are uploaded as workflow artifacts.
 
 ## Architecture
 
-The game is split into two layers so it can eventually be ported to Mac OS X
-without touching the rules of the game itself:
+The game is split into two layers so the same rules engine backs both
+platform front ends:
 
 - `src/core/` - portable C99 game engine (board state, guess evaluation,
   dictionary, RNG). No Mac Toolbox, no Carbon, no platform headers.
 - `src/platform/macos9/` - the Mac OS 9 front end: window/menu setup,
-  the classic `WaitNextEvent` loop, and all QuickDraw rendering.
+  the classic `WaitNextEvent` loop, and QuickDraw rendering, using
+  Retro68's Carbon PowerPC toolchain.
+- `src/platform/macosx/` - the Mac OS X front end: the same event-loop
+  architecture, but built against real Apple headers/SDK and using genuine
+  native controls throughout (see "UI philosophy" below) instead of any
+  hand-drawn content.
 
-The app is built against Retro68's **Carbon** PowerPC toolchain rather than
-the classic 68K/PPC one. Carbon apps run on Mac OS 8.1+, Mac OS 9, and
-natively on Mac OS X (through Tiger/Leopard), which makes this the toolchain
-variant closest to a "write once, recompile later on OS X" target.
+Both front ends target Carbon rather than a 68K/PPC-only or Cocoa-only API,
+which is what made a from-scratch OS X port straightforward: the same
+Toolbox surface (Window/Menu/Control/Dialog Managers, `WaitNextEvent`)
+works natively on both, just linked against a different SDK/toolchain per
+platform.
+
+## UI philosophy (Mac OS X port)
+
+Every window and dialog in the Mac OS X build is built from real native
+Carbon controls — `CreateStaticTextControl`, `CreateEditUnicodeTextControl`,
+native buttons, native window background brushes (`SetThemeWindowBackground`)
+— never hand-drawn text or hand-painted backgrounds. This was a deliberate,
+hard-won standing rule after an extended debugging arc where every
+hand-drawn substitute (raw `DrawString`, `DrawThemeTextBox`, manual ATSUI)
+rendered subtly wrong in some way that real native controls simply don't.
+See `CLAUDE.md` for the specifics if you're touching that code.
 
 ## Building
 
-Building happens entirely in CI (`.github/workflows/build.yml`), using the
-prebuilt `ghcr.io/autc04/retro68` Docker image:
+Building happens entirely in CI:
+
+- `.github/workflows/build.yml` — Mac OS 9, using the prebuilt
+  `ghcr.io/autc04/retro68` Docker image.
+- `.github/workflows/build-macosx.yml` — Mac OS X, using a
+  `powerpc-apple-darwin8` GCC cross-compiler + Apple's real
+  `MacOSX10.4u.sdk`, with Retro68's `Rez` borrowed only for resource
+  compilation (not the toolchain itself). The `.dmg` is assembled with
+  `libdmg-hfsplus`, so no real Mac is needed to build one.
+
+To reproduce the Mac OS 9 build locally with Docker:
 
 ```bash
 docker run --rm -v "$(pwd):/root/iWordle" -w /root/iWordle -i ghcr.io/autc04/retro68 /bin/bash <<'EOF'
@@ -38,12 +78,15 @@ cmake --build .
 EOF
 ```
 
-If you do have Docker locally and want to reproduce a build outside of
-GitHub Actions, the command above is exactly what CI runs.
+The Mac OS X build needs Apple's `MacOSX10.4u.sdk`, which isn't
+redistributable, so reproducing it outside CI requires supplying that SDK
+yourself — see `.github/workflows/build-macosx.yml` for the exact compiler
+flags and linked frameworks.
 
 ## Artifacts
 
-Each workflow run uploads an `iWordle-mac-os-9-ppc` artifact containing:
+**Mac OS 9** workflow runs upload an `iWordle-mac-os-9-ppc` artifact
+containing:
 
 - `iWordle.dsk` - a raw HFS disk image containing just the app. This is the
   file to hand to an emulator.
@@ -51,12 +94,20 @@ Each workflow run uploads an `iWordle-mac-os-9-ppc` artifact containing:
   emulator's host-file-sharing can mount directly.
 - `iWordle.bin` - a MacBinary-encoded copy of the app, for transferring
   through tools that don't preserve resource forks natively.
+- `iWordle.sit` - a StuffIt archive of the app, resource fork intact.
+
+**Mac OS X** workflow runs upload an `iWordle-mac-os-x-ppc` artifact
+containing:
+
+- `iWordle-mac-os-x-ppc.zip` - the `iWordle.app` bundle, zipped.
+- `iWordle.dmg` - a disk image containing the app, ready to mount and drag
+  to Applications.
 
 ## Testing in `qemu-system-ppc`
 
-Download and unzip the `iWordle-mac-os-9-ppc` artifact from the Actions run,
-then attach `iWordle.dsk` as an extra disk alongside your existing Mac OS 9
-boot disk image:
+**Mac OS 9**: download and unzip the `iWordle-mac-os-9-ppc` artifact from
+the Actions run, then attach `iWordle.dsk` as an extra disk alongside your
+existing Mac OS 9 boot disk image:
 
 ```bash
 qemu-system-ppc -M mac99 -m 256 \
@@ -69,8 +120,14 @@ Mac OS 9 will mount `iWordle.dsk` as an ordinary HFS volume on the desktop.
 Drag `iWordle` onto your hard disk (or launch it straight off the mounted
 volume) and run it.
 
+**Mac OS X**: mount `iWordle.dmg` inside a Mac OS X 10.0–10.5 PowerPC
+install running under `qemu-system-ppc`, and drag `iWordle.app` to
+Applications (or run it directly off the mounted volume).
+
 ## Controls
 
 - Type letters with the physical keyboard, or click the on-screen keyboard.
 - **Return** submits a guess; **Delete** removes the last letter.
-- **File > New Game** starts over; **Game > Give Up** reveals the word.
+- **File > New Game** starts over; **File > Ranking** (⌘R) shows
+  per-player statistics, and opens automatically after a result is
+  recorded; **File > End Game** (⌘W) gives up and reveals the word.

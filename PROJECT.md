@@ -1,79 +1,79 @@
-# Native Wordle Clone for Mac OS 9
-**Software Architecture & Technical Specification**
+# Native Wordle Clone for Classic Mac OS
+**Software Architecture & Technical Specification (as built)**
 
 ---
 
 ## 1. Executive Summary & Design Paradigm
 
-This specification outlines the architecture for a **native Wordle clone** engineered specifically for Classic Mac OS (Mac OS 9 / Carbon API). Designed to run fluidly on vintage PowerPC hardware, the application implements the classic 6x5 letter grid, color-coded feedback logic, virtual on-screen keyboard, and local dictionary resource management without external web wrappers or heavy runtime dependencies.
+This specification describes the as-built architecture for a **native Wordle clone** shipping on both **Mac OS 9** and **Mac OS X 10.0–10.5**, for PowerPC hardware. Both builds implement the classic 6×5 letter grid, color-coded feedback logic, and virtual on-screen keyboard, sharing one portable game-rules engine and diverging only in their platform front end.
 
-Leveraging Mac OS 9’s **QuickDraw graphics engine**, **Event Manager**, and resource fork storage (`STR#` resources), this project delivers a highly responsive, authentic retro gaming experience adhering to classic Platinum interface guidelines.
+Mac OS 9 uses **QuickDraw**, the classic **Event Manager**, and Platinum-styled chrome throughout. Mac OS X uses the same Carbon Toolbox surface but against a real Apple SDK, with genuine Aqua chrome and every UI element built from real native controls — no hand-drawn substitutes anywhere in that build (see `CLAUDE.md` for why that's a hard rule, not a preference).
 
 ---
 
-## 2. System Architecture & Workflows
-
-The game loop handles keyboard input and mouse clicks via low-level Event Manager hooks, updating QuickDraw graphic buffers to redraw tiles instantly with color feedback states.
+## 2. System Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│ File  Edit  Game  Help                  Wordle OS 9     │
+│ 🍎  iWordle  File                          Mon 1:00 AM  │
 ├─────────────────────────────────────────────────────────┤
-│                     [ W ] [ O ] [ R ] [ D ] [ E ]       │
-│                     [ . ] [ . ] [ . ] [ . ] [ . ]       │
-│                     [ . ] [ . ] [ . ] [ . ] [ . ]       │
-│                     [ . ] [ . ] [ . ] [ . ] [ . ]       │
-│                     [ . ] [ . ] [ . ] [ . ] [ . ]       │
-│                     [ . ] [ . ] [ . ] [ . ] [ . ]       │
-│                                                         │
-│   Q W E R T Y U I O P     (Green: Correct Spot)         │
-│    A S D F G H J K L      (Yellow: Wrong Spot)          │
-│     Z X C V B N M  [<-]   (Gray: Not in Word)           │
+│                     [ W ] [ O ] [ R ] [ D ] [ E ]        │
+│                     [ . ] [ . ] [ . ] [ . ] [ . ]        │
+│                     [ . ] [ . ] [ . ] [ . ] [ . ]        │
+│                     [ . ] [ . ] [ . ] [ . ] [ . ]        │
+│                     [ . ] [ . ] [ . ] [ . ] [ . ]        │
+│                     [ . ] [ . ] [ . ] [ . ] [ . ]        │
+│                                                           │
+│   Q W E R T Y U I O P     (Green: Correct Spot)          │
+│    A S D F G H J K L      (Yellow: Wrong Spot)           │
+│     Z X C V B N M  [<-]   (Gray: Not in Word)            │
 └─────────────────────────────────────────────────────────┘
 ```
 
-> **Core Subsystems & Integration Highlights**
-> * **QuickDraw Grid Renderer:** Draws the 6x5 matrix using custom rectangle coordinate math, filling tile backgrounds with Classic RGB colors (`RGBColor`) for exact matches (Green), misplaced letters (Yellow), and excluded letters (Gray).
-> * **Event & Input Manager:** Captures physical hardware keystrokes (`keyDownEvt`) as well as clicks on the virtual Control Manager on-screen keyboard.
-> * **Dictionary Resource Engine:** Loads target and valid guess lists from application resource forks (`STR#`) or localized flat files via the File Manager (`FSOpen`).
-> * **Game State & Dialog Manager:** Manages win/loss conditions, triggering native alert dialogs (`Alert` / `StopAlert`) with score summaries and replay options.
+`src/core/` holds the entire game engine — board state, guess evaluation, dictionary, RNG, per-player statistics — as portable C99 with zero Mac Toolbox/Carbon dependencies. `src/platform/macos9/` and `src/platform/macosx/` each implement the SAME UI (window/menu setup, event loop, tile/keyboard rendering, About/message/Ranking/name-prompt windows) against their own toolchain and SDK, calling into `src/core/` for every rule of the game itself. Neither front end embeds any game logic of its own.
+
+> **Core Subsystems**
+> * **QuickDraw Grid Renderer:** draws the 6×5 matrix with `PaintRect`/`FrameRect`, filling tile backgrounds with the project's `RGBColor` palette for correct (green), present (yellow), and absent (gray) letters.
+> * **Event Manager loop:** `WaitNextEvent`-driven, handling both physical keyboard input (`keyDownEvt`) and clicks on the virtual on-screen keyboard, plus every window's own update/activate/mouse events.
+> * **Dictionary Engine:** the valid-guess and answer word lists are compiled directly into `src/core/` as C arrays — no resource-fork or disk-based dictionary lookups, so validation is a simple in-memory search.
+> * **Native windows throughout:** on Mac OS X specifically, every dialog (About, message box, name prompt, Ranking) is a plain `WIND` built entirely from real Carbon controls at runtime, not a `DLOG`/`DITL` resource — see `CLAUDE.md`'s "no hand-drawn UI" rule.
 
 ---
 
-## 3. Core Features & Functional Specification
+## 3. Core Features
 
-### A. The 6x5 Letter Matrix & QuickDraw Rendering
-The game board is rendered inside a standard Platinum document window. Each cell is structured as a fixed-size square with a solid black border. When a guess is submitted, QuickDraw color fills (`RGBForeColor`) paint the tiles:
-* **Correct Position:** Forest Green (`#6AAA64` / RGB equivalent).
-* **Incorrect Position:** Golden Yellow (`#C9B458`).
-* **Absent Letter:** Dark Slate Gray (`#787C7E`).
+### A. The 6×5 Letter Matrix
+Each cell is a fixed-size square with a solid border, filled on submission with the standard Wordle color feedback: Forest Green (`#6AAA64`) correct, Golden Yellow (`#C9B458`) present, Dark Slate Gray (`#787C7E`) absent.
 
-### B. Dual Input Handler (Hardware & Virtual Keyboard)
-Input is processed seamlessly across two channels. The Event Manager intercepts alphanumeric key presses for typing and Backspace/Return for submission. Simultaneously, a virtual on-screen QWERTY keyboard rendered at the bottom of the window responds to mouse down events (`mouseDown`), dynamically updating key cap colors as letters are verified.
+### B. Dual Input Handler
+Physical keyboard input (letters, Return, Delete) and clicks on the on-screen QWERTY keyboard both drive the same guess-entry state machine; the on-screen keys recolor live as letters are verified.
 
-### C. Word Validation & Dictionary Storage
-Before a guess is evaluated, it is checked against a local array of valid 5-letter words. To keep memory footprint minimal on vintage G3/G4 systems, words are compiled directly into application resource forks (`STR#` resource type), allowing instant indexed lookups without sluggish disk reads.
+### C. Word Validation
+Guesses are checked against an in-memory word list compiled into `src/core/`; no disk or resource-fork lookup is needed at guess time.
+
+### D. Per-player statistics
+Every result (name, win/loss, streak) is recorded to a small on-disk stats file and shown in the Ranking window (File > Ranking, ⌘R), which also opens automatically right after a result is saved. Statistics persist across launches and can be cleared from the Ranking window.
+
+### E. About window
+Both platforms ship a standard About window matching their era's convention (a real title bar with a close box, no OK button — SimpleText's About Box on Mac OS 9, the equivalent native pattern on Mac OS X) showing the app icon, name/version, author, and credits.
 
 ---
 
 ## 4. Technical Stack & API Mapping
 
-| Component | Technology / API | Description |
+| Component | Mac OS 9 | Mac OS X |
 | :--- | :--- | :--- |
-| **Graphics & Rendering** | QuickDraw (`RGBForeColor`, `PaintRect`, `DrawText`) | Fast off-screen buffer rendering of game board, tiles, and typography. |
-| **Event Handling** | Mac OS Event Manager (`WaitNextEvent`, `keyDownEvt`) | Polling loop for keyboard input, mouse clicks, and window activation events. |
-| **UI Controls & Dialogs** | Control Manager & Dialog Manager | Window frames, on-screen buttons, and victory/defeat alert dialogs. |
-| **Storage & Resources** | Resource Manager (`Get1IndResource`, `STR#`) | Lightweight local storage for word lists and game dictionaries. |
-| **Development Environment** | Metrowerks CodeWarrior C/C++ / REALbasic 5.5 | Standard toolchain for building native PowerPC/68k Carbon or Classic binaries. |
+| **Toolchain** | Retro68 (Carbon PowerPC target) | `powerpc-apple-darwin8-gcc` + Apple's real `MacOSX10.4u.sdk` |
+| **Executable format** | PEF/CFM (`APPL`) | Mach-O `.app` bundle |
+| **Graphics & Rendering** | QuickDraw (`RGBForeColor`, `PaintRect`, `DrawString`) | Same QuickDraw calls for game-board tiles; every dialog/window built from real Carbon controls instead |
+| **Event Handling** | Mac OS Event Manager (`WaitNextEvent`, `keyDownEvt`) | Same |
+| **UI Controls & Dialogs** | Dialog Manager (`DLOG`/`DITL`) for message box/stats; plain `WIND` + Control Manager for the name prompt | Plain `WIND` + Control Manager throughout — no `DLOG`/`DITL` anywhere in this build |
+| **Storage** | `FSSpec`-based File Manager I/O for the stats file | Same File Manager API, same on-disk format |
+| **Distribution** | `.sit` (StuffIt) and `.dsk` (raw HFS disk image) | `.dmg` and a zipped `.app` bundle, built with `libdmg-hfsplus` (no real Mac needed) |
+| **CI** | `.github/workflows/build.yml`, `ghcr.io/autc04/retro68` Docker image | `.github/workflows/build-macosx.yml`, Retro68 borrowed only for its `Rez` tool |
 
 ---
 
-## 5. Work Effort & Development Estimates
+## 5. Status
 
-| Development Phase | Core Tasks | Estimated Time |
-| :--- | :--- | :--- |
-| **1. Project Setup & Window Framework** | Carbon/Classic application skeleton, event loop, and Platinum window initialization. | 2 – 3 Hours |
-| **2. QuickDraw Grid & Tile Engine** | 6x5 matrix layout logic, text drawing algorithms, and color-coded state painting. | 3 – 4 Hours |
-| **3. Input Handler & Validation Logic** | Hardware keyboard capture, virtual keyboard mapping, and letter-matching evaluation engine. | 4 – 5 Hours |
-| **4. Dictionary Integration & Polish** | Resource fork dictionary loading (`STR#`), win/loss dialogs, and stats tracking. | 2 – 3 Hours |
-| **TOTAL ESTIMATED EFFORT** | **Complete native, standalone Mac OS 9 Wordle Clone** | **~11 – 15 Hours** |
+Both builds are feature-complete and released — see the repo's [Releases](../../releases) page for downloads. Ongoing/future work, if any, should be tracked as issues rather than in this document.
