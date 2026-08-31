@@ -902,7 +902,7 @@ static void OnAbout(void)
                         done = true;
                     }
                 } else if (part == inDrag) {
-                    DragWindow(w, event.where, &screenBits.bounds);
+                    DragWindow(w, event.where, NULL);
                 }
                 break;
             }
