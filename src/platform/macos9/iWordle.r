@@ -1,7 +1,7 @@
 /*
  * Resource definitions for iWordle: menu bar, main document window, a
- * message dialog (New Game confirm, Give Up, Win / Lose), an About
- * dialog, and a statistics scoreboard (203).
+ * message dialog (New Game confirm, Give Up, Win / Lose), and a
+ * statistics scoreboard (203).
  *
  * Those are DLOG/DITL dialogs where item 1 is a UserItem that paints the
  * Platinum gray background (Retro68's default open-source Multiversal
@@ -23,11 +23,14 @@
  * default button immediately followed by its ring UserItem in the item
  * list.
  *
- * The player-name prompt (202) is NOT one of these -- it's a plain WIND
- * with no DITL at all, since it needed real native Control Manager
- * controls (an Edit Text field) that ModalDialog doesn't cooperate with
- * well. See the comment on WIND (202) below and on PromptForPlayerName
- * in main.c for why.
+ * The player-name prompt (202) and the About window (201) are NOT one
+ * of these -- they're plain WINDs with no DITL at all. The player-name
+ * prompt needed real native Control Manager controls (an Edit Text
+ * field) that ModalDialog doesn't cooperate with well; the About window
+ * needed a real title bar with a close box and no OK button, matching
+ * standard Mac OS 9 About Box convention. See the comments on WIND (202)
+ * below, on WIND (201) below, and on PromptForPlayerName/OnAbout in
+ * main.c for why.
  */
 
 #include "Types.r"
@@ -108,28 +111,23 @@ resource 'DITL' (200) {
     }
 };
 
-resource 'DLOG' (201, "About iWordle") {
+/* Plain WIND, not DLOG/DITL -- standard Mac OS 9 About Box convention
+ * (e.g. SimpleText's): a real title bar with a close box, no OK button,
+ * dismissed by clicking the close box. noGrowDocProc since a fixed-size
+ * About window has no reason to offer a resize grip. OnAbout() (main.c)
+ * runs its own small WaitNextEvent loop instead of ModalDialog, same
+ * architecture as the player-name prompt (WIND 202) below -- and draws
+ * the exact same content as before (DrawAboutWindowContent(), a
+ * straight rename of the old AboutContentDrawProc() DITL UserItem proc,
+ * content unchanged). Starts invisible; OnAbout() shows it once ready. */
+resource 'WIND' (201, "About iWordle") {
     { 0, 0, 280, 280 },
-    dBoxProc,
-    visible,
-    noGoAway,
+    noGrowDocProc,
+    invisible,
+    goAway,
     0,
-    201,
-    "",
+    "About iWordle",
     centerMainScreen
-};
-
-resource 'DITL' (201) {
-    {
-        { 0, 0, 222, 280 },
-        UserItem { enabled };
-
-        { 242, 105, 266, 175 },
-        Button { enabled, "OK" };
-
-        { 237, 100, 271, 180 },
-        UserItem { disabled };
-    }
 };
 
 /* ---- Player name entry (WIND 202) ----

@@ -111,7 +111,6 @@ static ControlHandle gNameOKControl = NULL;
 /* ---------------------------------------------------------------------- */
 
 pascal void MessageContentDrawProc(DialogRef dlg, DialogItemIndex itemNo);
-pascal void AboutContentDrawProc(DialogRef dlg, DialogItemIndex itemNo);
 pascal void StatsContentDrawProc(DialogRef dlg, DialogItemIndex itemNo);
 pascal Boolean DismissOnEnterFilterProc(DialogPtr dlg, EventRecord *event, short *itemHit);
 pascal Boolean DismissOnEnterFilterProc3(DialogPtr dlg, EventRecord *event, short *itemHit);
@@ -119,6 +118,7 @@ pascal void ButtonFrameProc(DialogRef dlg, DialogItemIndex itemNo);
 static void PaintFullDialogBackground(DialogRef dlg);
 
 static void DrawNameWindowContent(WindowPtr w);
+static void DrawAboutWindowContent(WindowPtr w);
 
 static void PStrToCStr(char *dst, ConstStr255Param src, size_t dstSize);
 static Boolean GetStatsFileSpec(FSSpec *spec);
@@ -686,22 +686,27 @@ static void ShowMessage(ConstStr255Param msg)
 }
 
 /* ---------------------------------------------------------------------- */
-/* About dialog: icon, app name/version, author, credits, native button   */
+/* About window: icon, app name/version, author, credits                  */
 /* ---------------------------------------------------------------------- */
 
-pascal void AboutContentDrawProc(DialogRef dlg, DialogItemIndex itemNo)
+/* A straight rename of the old AboutContentDrawProc() DITL UserItem
+ * proc -- content unchanged, only the window plumbing around it changed
+ * (see OnAbout() and WIND 201 in iWordle.r): a plain WindowPtr instead
+ * of a DialogRef/DITL item, background painted the same way
+ * DrawNameWindowContent() does for WIND 202 rather than via
+ * PaintFullDialogBackground() (which took a DialogRef). */
+static void DrawAboutWindowContent(WindowPtr w)
 {
-    DialogItemType type;
-    Handle itemH;
     Rect box, iconRect;
     Str255 s;
     short midX;
 
-    (void)itemNo;
+    SetPortWindowPort(w);
+    GetPortBounds(GetWindowPort(w), &box);
+    SetBackColor(kColorWindowBG);
+    SetForeColor(kColorWindowBG);
+    PaintRect(&box);
 
-    PaintFullDialogBackground(dlg);
-
-    GetDialogItem(dlg, 1, &type, &itemH, &box);
     midX = box.left + (box.right - box.left) / 2;
 
     SetForeColor(kColorBlack);
@@ -835,31 +840,79 @@ static void OnGiveUp(void)
     UpdateFileMenuState();
 }
 
+/* A plain window with its own tiny event loop, not a ModalDialog --
+ * standard Mac OS 9 About Box convention (e.g. SimpleText's): a real
+ * title bar with a close box, no OK button, dismissed by clicking the
+ * close box (or Return/Enter/Escape). Same architecture as
+ * PromptForPlayerName() above, minus any controls -- see WIND 201 in
+ * iWordle.r for why. */
 static void OnAbout(void)
 {
-    DialogPtr dlg;
-    short item;
-    DialogItemType type;
-    Handle itemH;
-    Rect box;
+    WindowPtr w;
+    Boolean done = false;
+    EventRecord event;
 
-    dlg = GetNewDialog(201, NULL, (WindowPtr)-1);
-    if (dlg == NULL) return;
+    w = GetNewCWindow(201, NULL, (WindowPtr)-1);
+    if (w == NULL) return;
 
-    GetDialogItem(dlg, 1, &type, &itemH, &box);
-    SetDialogItem(dlg, 1, type, (Handle)NewUserItemUPP(&AboutContentDrawProc), &box);
+    ChangeWindowAttributes(w, 0, kWindowResizableAttribute);
 
-    GetDialogItem(dlg, 3, &type, &itemH, &box);
-    SetDialogItem(dlg, 3, type, (Handle)NewUserItemUPP(&ButtonFrameProc), &box);
-
-    DrawDialog(dlg);
-    DrawControls((WindowPtr)dlg);
+    ShowWindow(w);
+    SelectWindow(w);
 
     do {
-        ModalDialog(NewModalFilterUPP(&DismissOnEnterFilterProc), &item);
-    } while (item != 2);
+        WaitNextEvent(everyEvent, &event, 15, NULL);
 
-    DisposeDialog(dlg);
+        switch (event.what) {
+            case updateEvt:
+                if ((WindowPtr)event.message == w) {
+                    BeginUpdate(w);
+                    DrawAboutWindowContent(w);
+                    EndUpdate(w);
+                }
+                break;
+
+            case keyDown:
+            case autoKey: {
+                char c = (char)(event.message & charCodeMask);
+                if (c == '\r' || c == 3 || c == 27) {
+                    done = true;
+                }
+                break;
+            }
+
+            case mouseDown: {
+                WindowPtr whichWindow;
+                short part = FindWindow(event.where, &whichWindow);
+
+                if (whichWindow != w) {
+                    if (part == inMenuBar) {
+                        /* Keep this window on top of the game's menu the
+                         * same way a modal dialog would -- ignore menu
+                         * clicks while it's up. */
+                        HiliteMenu(0);
+                    } else {
+                        SelectWindow(w);
+                    }
+                    break;
+                }
+
+                if (part == inGoAway) {
+                    if (TrackGoAway(w, event.where)) {
+                        done = true;
+                    }
+                } else if (part == inDrag) {
+                    DragWindow(w, event.where, &screenBits.bounds);
+                }
+                break;
+            }
+
+            default:
+                break;
+        }
+    } while (!done);
+
+    DisposeWindow(w);
     RedrawAll();
 }
 
@@ -1033,7 +1086,9 @@ static Boolean PromptForPlayerName(Str255 outName)
 }
 
 /* Prompts for a name and records won/lost against it. Skips recording
- * entirely if the name field was left blank. */
+ * entirely if the name field was left blank -- opening Ranking
+ * afterward is conditioned on actually reaching SaveStats() for the
+ * same reason: nothing was saved, so there's nothing new to show. */
 static void RecordGameResult(Boolean won)
 {
     Str255 name;
@@ -1045,6 +1100,8 @@ static void RecordGameResult(Boolean won)
     WordleStatsRecordResult(&gStats, cname, won);
     PStrCopy(gLastPlayerName, name);
     SaveStats();
+
+    OnStatistics();
 }
 
 pascal void StatsContentDrawProc(DialogRef dlg, DialogItemIndex itemNo)
