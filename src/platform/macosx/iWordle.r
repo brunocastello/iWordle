@@ -1,7 +1,7 @@
 /*
  * Resource definitions for iWordle: menu bar, main document window, a
- * message dialog (New Game confirm, Give Up, Win / Lose), an About
- * dialog, and a statistics scoreboard (203).
+ * message dialog (New Game confirm, Give Up, Win / Lose), and a
+ * statistics scoreboard (203).
  *
  * Those are DLOG/DITL dialogs where item 1 is a UserItem that paints the
  * Platinum gray background (Retro68's default open-source Multiversal
@@ -23,11 +23,12 @@
  * default button immediately followed by its ring UserItem in the item
  * list.
  *
- * The player-name prompt (202) is NOT one of these -- it's a plain WIND
- * with no DITL at all, since it needed real native Control Manager
- * controls (an Edit Text field) that ModalDialog doesn't cooperate with
- * well. See the comment on WIND (202) below and on PromptForPlayerName
- * in main.c for why.
+ * The player-name prompt (202) and the About window (201) are NOT one
+ * of these -- they're plain WINDs with no DITL at all, built entirely
+ * from real native Control Manager controls at runtime instead of a
+ * hand-drawn UserItem, and dismissed via their own event loop rather
+ * than ModalDialog. See the comments on WIND (202) below, on WIND (201)
+ * below, and on PromptForPlayerName/OnAbout in main.c for why.
  */
 
 #include "Types.r"
@@ -109,25 +110,21 @@ resource 'DITL' (200) {
     }
 };
 
-resource 'DLOG' (201, "About iWordle") {
+/* Plain WIND, not DLOG/DITL -- a real documentProc/goAway window gets
+ * the standard Aqua traffic-light title bar for free, matching every
+ * other native About window on OS X, and is dismissed by its own close
+ * box rather than an OK button. Same reasoning and architecture as WIND
+ * 202 (see the comment above it and on OnAbout() in main.c): a plain
+ * WaitNextEvent loop with real native controls, no DITL at all. Starts
+ * invisible; OnAbout() shows it only once its controls are set up. */
+resource 'WIND' (201, "About iWordle") {
     { 0, 0, 280, 280 },
-    dBoxProc,
-    visible,
-    noGoAway,
+    documentProc,
+    invisible,
+    goAway,
     0,
-    201,
-    "",
+    "About iWordle",
     centerMainScreen
-};
-
-resource 'DITL' (201) {
-    {
-        { 0, 0, 222, 280 },
-        UserItem { enabled };
-
-        { 244, 105, 264, 175 },
-        Button { enabled, "OK" };
-    }
 };
 
 /* ---- Player name entry (WIND 202) ----

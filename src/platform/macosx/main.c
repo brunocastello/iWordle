@@ -103,7 +103,6 @@ static ControlHandle gNameOKControl = NULL;
 /* ---------------------------------------------------------------------- */
 
 pascal void MessageContentDrawProc(DialogRef dlg, DialogItemIndex itemNo);
-pascal void AboutContentDrawProc(DialogRef dlg, DialogItemIndex itemNo);
 pascal void StatsContentDrawProc(DialogRef dlg, DialogItemIndex itemNo);
 static void ShowDialogWithDefaultButton(DialogPtr dlg, short defaultItem);
 
@@ -646,29 +645,8 @@ static void ShowMessage(ConstStr255Param msg)
 }
 
 /* ---------------------------------------------------------------------- */
-/* About dialog: icon, app name/version, author, credits, native button   */
+/* About window: icon, app name/version, author, credits                  */
 /* ---------------------------------------------------------------------- */
-
-/* Only the icon -- the text lines are real native controls now, added
- * in OnAbout() via AddAboutLine(), not drawn here. */
-pascal void AboutContentDrawProc(DialogRef dlg, DialogItemIndex itemNo)
-{
-    DialogItemType type;
-    Handle itemH;
-    Rect box, iconRect;
-    short midX;
-
-    (void)itemNo;
-
-    GetDialogItem(dlg, 1, &type, &itemH, &box);
-    midX = box.left + (box.right - box.left) / 2;
-
-    SetForeColor(kColorBlack);
-    PenNormal();
-
-    SetRect(&iconRect, midX - 16, box.top + 14, midX + 16, box.top + 46);
-    PlotIconID(&iconRect, atNone, ttNone, 128);
-}
 
 /* ---------------------------------------------------------------------- */
 /* Game actions                                                            */
@@ -747,54 +725,117 @@ static void OnGiveUp(void)
     UpdateFileMenuState();
 }
 
+/* A plain window with its own tiny event loop, not a ModalDialog --
+ * same architecture as PromptForPlayerName() and for the same underlying
+ * reason: this needs a real documentProc/goAway window (the standard
+ * Aqua traffic-light title bar every native About window has, dismissed
+ * by its own close box, no OK button) rather than a DLOG, and real
+ * native controls throughout rather than any hand-drawn content.
+ * CreateIconControl()/CreateStaticTextControl() both auto-create the
+ * window's root control if one doesn't exist yet, so unlike
+ * PromptForPlayerName() there's no explicit GetRootControl()/
+ * CreateRootControl() call needed here. */
 static void OnAbout(void)
 {
-    DialogPtr dlg;
-    short item;
-    DialogItemType type;
-    Handle itemH;
-    Rect box;
     WindowRef win;
+    Rect windowRect, iconRect;
+    ControlButtonContentInfo iconContent;
+    ControlRef iconControl;
     Str255 s;
+    Boolean done = false;
+    EventRecord event;
+    short midX;
 
-    dlg = GetNewDialog(201, NULL, (WindowPtr)-1);
-    if (dlg == NULL) return;
+    win = GetNewCWindow(201, NULL, (WindowPtr)-1);
+    if (win == NULL) return;
 
-    GetDialogItem(dlg, 1, &type, &itemH, &box);
-    SetDialogItem(dlg, 1, type, (Handle)NewUserItemUPP(&AboutContentDrawProc), &box);
+    GetPortBounds(GetWindowPort(win), &windowRect);
+    midX = (windowRect.right - windowRect.left) / 2;
 
-    /* Real native Static Text controls, not hand-drawn text -- see
-     * AddAboutLine() for why. kThemeWindowTitleFont (bold, one size tier
-     * up from kThemeEmphasizedSystemFont) for the headline lines,
-     * kThemeSystemFont (regular) for the rest -- both still real
-     * SDK-provided ThemeFontIDs, not a hand-picked point size. */
-    win = GetDialogWindow(dlg);
+    SetRect(&iconRect, midX - 16, 14, midX + 16, 46);
+    iconContent.contentType = kControlContentIconSuiteRes;
+    iconContent.u.resID = 128;
+    CreateIconControl(win, &iconRect, &iconContent, false, &iconControl);
 
+    /* kThemeWindowTitleFont (bold, one size tier up from
+     * kThemeEmphasizedSystemFont) for the headline lines, kThemeSystemFont
+     * (regular) for the rest -- both real SDK-provided ThemeFontIDs, not
+     * a hand-picked point size. See AddAboutLine() for why these are
+     * real Static Text controls rather than hand-drawn text. */
     CStrToPStr(s, "iWordle 1.0");
-    AddAboutLine(win, box.left, box.right, box.top + 50, 20, kThemeWindowTitleFont, s);
+    AddAboutLine(win, windowRect.left, windowRect.right, 50, 20, kThemeWindowTitleFont, s);
 
     CStrToPStr(s, "A native Wordle clone for Mac OS X");
-    AddAboutLine(win, box.left, box.right, box.top + 70, 20, kThemeSystemFont, s);
+    AddAboutLine(win, windowRect.left, windowRect.right, 70, 20, kThemeSystemFont, s);
 
     CStrToPStr(s, "Bruno Castello");
-    AddAboutLine(win, box.left, box.right, box.top + 98, 20, kThemeWindowTitleFont, s);
+    AddAboutLine(win, windowRect.left, windowRect.right, 98, 20, kThemeWindowTitleFont, s);
 
     CStrToPStr(s, "bfcastello@hotmail.com");
-    AddAboutLine(win, box.left, box.right, box.top + 118, 20, kThemeSystemFont, s);
+    AddAboutLine(win, windowRect.left, windowRect.right, 118, 20, kThemeSystemFont, s);
 
     CStrToPStr(s, "Engineer: Claude Sonnet 5");
-    AddAboutLine(win, box.left, box.right, box.top + 146, 20, kThemeWindowTitleFont, s);
+    AddAboutLine(win, windowRect.left, windowRect.right, 146, 20, kThemeWindowTitleFont, s);
 
     CStrToPStr(s, "\xA9 Castello Designs, 2026");
-    AddAboutLine(win, box.left, box.right, box.top + 174, 20, kThemeSystemFont, s);
+    AddAboutLine(win, windowRect.left, windowRect.right, 174, 20, kThemeSystemFont, s);
 
-    ShowDialogWithDefaultButton(dlg, 2);
+    ShowWindow(win);
+    SelectWindow(win);
 
     do {
-        ModalDialog(NULL, &item);
-    } while (item != 2);
+        WaitNextEvent(everyEvent, &event, 15, NULL);
 
-    DisposeDialog(dlg);
+        switch (event.what) {
+            case updateEvt:
+                if ((WindowPtr)event.message == win) {
+                    BeginUpdate(win);
+                    DrawControls(win);
+                    EndUpdate(win);
+                }
+                break;
+
+            case keyDown:
+            case autoKey: {
+                char c = (char)(event.message & charCodeMask);
+                if (c == '\r' || c == 3 || c == 27) {
+                    done = true;
+                }
+                break;
+            }
+
+            case mouseDown: {
+                WindowPtr whichWindow;
+                short part = FindWindow(event.where, &whichWindow);
+
+                if (whichWindow != win) {
+                    if (part == inMenuBar) {
+                        /* Keep this window on top of the game's menu the
+                         * same way a modal dialog would -- ignore menu
+                         * clicks while it's up. */
+                        HiliteMenu(0);
+                    } else {
+                        SelectWindow(win);
+                    }
+                    break;
+                }
+
+                if (part == inGoAway) {
+                    if (TrackGoAway(win, event.where)) {
+                        done = true;
+                    }
+                } else if (part == inDrag) {
+                    DragWindow(win, event.where, NULL);
+                }
+                break;
+            }
+
+            default:
+                break;
+        }
+    } while (!done);
+
+    DisposeWindow(win);
     RedrawAll();
 }
 
