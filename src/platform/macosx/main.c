@@ -98,8 +98,6 @@ static ControlHandle gNameOKControl = NULL;
 /* Forward declarations                                                   */
 /* ---------------------------------------------------------------------- */
 
-static void ShowDialogWithDefaultButton(DialogPtr dlg, short defaultItem);
-
 static void PStrToCStr(char *dst, ConstStr255Param src, size_t dstSize);
 static Boolean GetStatsFileSpec(FSSpec *spec);
 static void LoadStats(void);
@@ -544,75 +542,103 @@ static void SaveStats(void)
 }
 
 /* ---------------------------------------------------------------------- */
-/* Shared modal helpers                                                    */
-/*                                                                        */
-/* Unlike the Mac OS 9 build (Retro68's headers have no Appearance        */
-/* Manager at all), real Mac OS X Carbon draws a genuinely native Aqua    */
-/* dialog background and default-button glow for free -- so this front   */
-/* end doesn't hand-paint a background or hand-draw a default-button      */
-/* ring the way OS 9 has to. Item 1's UserItem draw procs below only      */
-/* draw their own text/icon/table content, leaving the dialog's real      */
-/* background untouched. SetDialogDefaultItem() marks the given item as   */
-/* both the pulsing-blue-glow default button AND the Return/Enter target, */
-/* which is the standard, HIG-correct replacement for both the hand-drawn */
-/* ring and the custom Return-key filter procs OS 9 needs.                */
-/* ---------------------------------------------------------------------- */
-
-/* GetNewDialog() on real Carbon doesn't reliably paint its native
- * controls on first show -- without an explicit extra draw here, the OK/
- * Clear buttons stay invisible until the user's first click forces a
- * redraw. Draw1Control-ing the default button directly closes that gap
- * regardless of the exact cause. */
-static void ShowDialogWithDefaultButton(DialogPtr dlg, short defaultItem)
-{
-    ControlRef defaultControl;
-
-    SetDialogDefaultItem(dlg, defaultItem);
-    DrawDialog(dlg);
-    DrawControls((WindowPtr)dlg);
-    if (GetDialogItemAsControl(dlg, defaultItem, &defaultControl) == noErr) {
-        Draw1Control(defaultControl);
-    }
-}
-
-/* ---------------------------------------------------------------------- */
 /* Message dialog (New Game / Give Up / Win / Lose)                       */
 /* ---------------------------------------------------------------------- */
 
-/* No hand-drawn content or gMessageText global needed anymore -- the
- * message is a real Static Text control built directly with the text
- * ShowMessage() was called with, same technique as the About window's
- * AddLabel() (see its comment for why). kThemeAlertHeaderFont is
- * documented as the font for "the first (and most important) message of
- * an alert window", which is exactly this dialog's role. Item 1's
- * UserItem stays in the DITL purely to reserve the content rect via
- * GetDialogItem() -- nothing draws it. */
+/* A plain window with its own tiny event loop, not a ModalDialog -- same
+ * architecture as PromptForPlayerName()/OnAbout(), and for the same
+ * concrete reason this time: a GetNewDialog() window doesn't respect
+ * SetThemeWindowBackground() the way a plain GetNewCWindow() window
+ * does (confirmed by screenshot: stayed plain white despite the call),
+ * so this had to stop using ModalDialog to get the native background at
+ * all. kThemeAlertHeaderFont is documented as the font for "the first
+ * (and most important) message of an alert window", which is exactly
+ * this window's role. */
 static void ShowMessage(ConstStr255Param msg)
 {
-    DialogPtr dlg;
-    short item;
-    DialogItemType type;
-    Handle itemH;
-    Rect box;
-    WindowRef win;
+    WindowPtr w;
+    Rect windowRect, okRect;
+    ControlHandle okControl;
+    Boolean done = false;
+    EventRecord event;
 
-    dlg = GetNewDialog(200, NULL, (WindowPtr)-1);
-    if (dlg == NULL) return;
+    w = GetNewCWindow(200, NULL, (WindowPtr)-1);
+    if (w == NULL) return;
 
-    win = GetDialogWindow(dlg);
-    SetThemeWindowBackground(win, kThemeBrushDialogBackgroundActive, false);
+    SetThemeWindowBackground(w, kThemeBrushDialogBackgroundActive, false);
+    ChangeWindowAttributes(w, 0, kWindowResizableAttribute);
 
-    GetDialogItem(dlg, 1, &type, &itemH, &box);
-    AddLabel(win, box.left, box.right, box.top + (box.bottom - box.top) / 2 - 10, 20,
-             kThemeAlertHeaderFont, teCenter, msg);
+    GetPortBounds(GetWindowPort(w), &windowRect);
+    AddLabel(w, windowRect.left, windowRect.right,
+              (windowRect.bottom - windowRect.top) / 2 - 20, 20,
+              kThemeAlertHeaderFont, teCenter, msg);
 
-    ShowDialogWithDefaultButton(dlg, 2);
+    /* Rect matches the old DITL button's box exactly. */
+    SetRect(&okRect, 135, 100, 205, 120);
+    okControl = NewControl(w, &okRect, "\002OK", true, 0, 0, 0, kControlPushButtonProc, 0L);
+    SetWindowDefaultButton(w, okControl);
+
+    ShowWindow(w);
+    SelectWindow(w);
 
     do {
-        ModalDialog(NULL, &item);
-    } while (item != 2);
+        WaitNextEvent(everyEvent, &event, 15, NULL);
 
-    DisposeDialog(dlg);
+        switch (event.what) {
+            case updateEvt:
+                if ((WindowPtr)event.message == w) {
+                    BeginUpdate(w);
+                    DrawControls(w);
+                    if (okControl != NULL) Draw1Control(okControl);
+                    EndUpdate(w);
+                }
+                break;
+
+            case keyDown:
+            case autoKey: {
+                char c = (char)(event.message & charCodeMask);
+                if (c == '\r' || c == 3 || c == ' ') {
+                    done = true;
+                }
+                break;
+            }
+
+            case mouseDown: {
+                WindowPtr whichWindow;
+                short part = FindWindow(event.where, &whichWindow);
+
+                if (whichWindow != w) {
+                    if (part == inMenuBar) {
+                        HiliteMenu(0);
+                    } else {
+                        SelectWindow(w);
+                    }
+                    break;
+                }
+
+                if (part == inContent) {
+                    Point local = event.where;
+                    ControlHandle hitControl = NULL;
+
+                    SetPortWindowPort(w);
+                    GlobalToLocal(&local);
+                    FindControl(local, w, &hitControl);
+
+                    if (hitControl == okControl) {
+                        if (TrackControl(okControl, local, NULL) != 0) {
+                            done = true;
+                        }
+                    }
+                }
+                break;
+            }
+
+            default:
+                break;
+        }
+    } while (!done);
+
+    DisposeWindow(w);
     RedrawAll();
 }
 
@@ -727,6 +753,7 @@ static void OnAbout(void)
      * documented pairing for a non-modal document-class window like this
      * one (Appearance.h: "use with kDocumentWindowClass"). */
     SetThemeWindowBackground(win, kThemeBrushModelessDialogBackgroundActive, false);
+    ChangeWindowAttributes(win, 0, kWindowResizableAttribute);
 
     GetPortBounds(GetWindowPort(win), &windowRect);
     midX = (windowRect.right - windowRect.left) / 2;
@@ -858,6 +885,7 @@ static Boolean PromptForPlayerName(Str255 outName)
      * windows (see [[project_theme_font_unreliable]] in memory) -- a
      * plain dBoxProc window is white by default, not the native gray. */
     SetThemeWindowBackground(w, kThemeBrushDialogBackgroundActive, false);
+    ChangeWindowAttributes(w, 0, kWindowResizableAttribute);
 
     if (GetRootControl(w, &rootControl) != noErr) {
         CreateRootControl(w, &rootControl);
@@ -869,6 +897,18 @@ static Boolean PromptForPlayerName(Str255 outName)
 
     SetRect(&fieldRect, 60, 67, 260, 85);
     gNameFieldControl = NewControl(w, &fieldRect, "\000", true, 0, 0, 0, kControlEditTextProc, 0L);
+
+    /* NewControl()'s Edit Text defaults to a generic/non-native font in
+     * this toolchain (same underlying issue as every other hand-picked
+     * font in this file -- see [[project_theme_font_unreliable]]) --
+     * kThemeSystemFont via SetControlFontStyle() is what a real Aqua
+     * text field actually uses. */
+    if (gNameFieldControl != NULL) {
+        ControlFontStyleRec fieldStyle;
+        fieldStyle.flags = kControlUseThemeFontIDMask;
+        fieldStyle.font = kThemeSystemFont;
+        SetControlFontStyle(gNameFieldControl, &fieldStyle);
+    }
 
     /* Standard Aqua push button height (20px). */
     SetRect(&okRect, 125, 120, 195, 140);
@@ -1081,40 +1121,108 @@ static void BuildStatsContent(WindowRef win, const Rect *box)
     }
 }
 
+/* Same architecture and reason as ShowMessage() above -- a plain window
+ * with its own event loop instead of ModalDialog, since ModalDialog's
+ * window didn't respect SetThemeWindowBackground(). */
 static void OnStatistics(void)
 {
-    DialogPtr dlg;
-    short item;
-    DialogItemType type;
-    Handle itemH;
-    Rect box;
-    WindowRef win;
+    WindowPtr w;
+    Rect windowRect, box, clearRect, okRect;
+    ControlHandle clearControl, okControl;
+    Boolean done = false;
+    EventRecord event;
 
-    dlg = GetNewDialog(203, NULL, (WindowPtr)-1);
-    if (dlg == NULL) return;
+    w = GetNewCWindow(203, NULL, (WindowPtr)-1);
+    if (w == NULL) return;
 
-    win = GetDialogWindow(dlg);
-    SetThemeWindowBackground(win, kThemeBrushDialogBackgroundActive, false);
+    SetThemeWindowBackground(w, kThemeBrushDialogBackgroundActive, false);
+    ChangeWindowAttributes(w, 0, kWindowResizableAttribute);
 
-    GetDialogItem(dlg, 1, &type, &itemH, &box);
-    BuildStatsContent(win, &box);
+    GetPortBounds(GetWindowPort(w), &windowRect);
+    box = windowRect;
+    box.bottom -= 50; /* Reserve room for the buttons below the table --
+                        * matches the old DITL content item's rect within
+                        * the 300pt-tall window. */
+    BuildStatsContent(w, &box);
 
-    ShowDialogWithDefaultButton(dlg, 3);
+    SetRect(&clearRect, 30, 264, 110, 284);
+    clearControl = NewControl(w, &clearRect, "\005Clear", true, 0, 0, 0, kControlPushButtonProc, 0L);
+
+    SetRect(&okRect, 320, 264, 390, 284);
+    okControl = NewControl(w, &okRect, "\002OK", true, 0, 0, 0, kControlPushButtonProc, 0L);
+    SetWindowDefaultButton(w, okControl);
+
+    ShowWindow(w);
+    SelectWindow(w);
 
     do {
-        ModalDialog(NULL, &item);
-        if (item == 2) {
-            /* Force the redraw ourselves rather than invalidating and
-             * waiting for the next update event. */
-            WordleStatsClear(&gStats);
-            SaveStats();
-            BuildStatsContent(win, &box);
-            ShowDialogWithDefaultButton(dlg, 3);
+        WaitNextEvent(everyEvent, &event, 15, NULL);
+
+        switch (event.what) {
+            case updateEvt:
+                if ((WindowPtr)event.message == w) {
+                    BeginUpdate(w);
+                    DrawControls(w);
+                    if (okControl != NULL) Draw1Control(okControl);
+                    EndUpdate(w);
+                }
+                break;
+
+            case keyDown:
+            case autoKey: {
+                char c = (char)(event.message & charCodeMask);
+                if (c == '\r' || c == 3) {
+                    done = true;
+                }
+                break;
+            }
+
+            case mouseDown: {
+                WindowPtr whichWindow;
+                short part = FindWindow(event.where, &whichWindow);
+
+                if (whichWindow != w) {
+                    if (part == inMenuBar) {
+                        HiliteMenu(0);
+                    } else {
+                        SelectWindow(w);
+                    }
+                    break;
+                }
+
+                if (part == inContent) {
+                    Point local = event.where;
+                    ControlHandle hitControl = NULL;
+
+                    SetPortWindowPort(w);
+                    GlobalToLocal(&local);
+                    FindControl(local, w, &hitControl);
+
+                    if (hitControl == clearControl) {
+                        if (TrackControl(clearControl, local, NULL) != 0) {
+                            /* Force the redraw ourselves rather than
+                             * invalidating and waiting for the next
+                             * update event. */
+                            WordleStatsClear(&gStats);
+                            SaveStats();
+                            BuildStatsContent(w, &box);
+                        }
+                    } else if (hitControl == okControl) {
+                        if (TrackControl(okControl, local, NULL) != 0) {
+                            done = true;
+                        }
+                    }
+                }
+                break;
+            }
+
+            default:
+                break;
         }
-    } while (item != 3);
+    } while (!done);
 
     ClearStatsContent();
-    DisposeDialog(dlg);
+    DisposeWindow(w);
     RedrawAll();
 }
 
@@ -1380,6 +1488,10 @@ int main(void)
     DrawMenuBar();
 
     gWindow = GetNewCWindow(128, NULL, (WindowPtr)-1);
+    /* The board/keyboard layout is a fixed size (see MARGIN etc. at the
+     * top of this file) -- no reason to offer a resize grip that would
+     * just distort or clip it. */
+    ChangeWindowAttributes(gWindow, 0, kWindowResizableAttribute);
     ShowWindow(gWindow);
 
     LoadStats();

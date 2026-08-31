@@ -1,27 +1,21 @@
 /*
- * Resource definitions for iWordle: menu bar, main document window, a
- * message dialog (New Game confirm, Give Up, Win / Lose, 200), and a
- * statistics scoreboard (203).
+ * Resource definitions for iWordle: menu bar, main document window, and
+ * four dialog-style windows (message box 200, About 201, player-name
+ * prompt 202, statistics scoreboard 203).
  *
- * Those are still DLOG/DITL dialogs (real native Button items, tracked
- * via ModalDialog -- no reason to replace a mechanism that already
- * worked), but item 1's UserItem no longer draws anything: it's kept
- * only so main.c can read its rect via GetDialogItem() to lay out real
- * content against, since neither the dialog's background nor its text
- * is hand-drawn anymore. main.c calls SetThemeWindowBackground() on the
- * dialog's window for the native Aqua panel background, and builds the
- * actual message text / stats table out of real Static Text controls
- * (and, for the stats table's divider, a real CreateSeparatorControl())
- * added directly to that window at runtime -- the same techniques used
- * for the About window (201) and the player-name prompt (202). See
- * ShowMessage()/BuildStatsContent() in main.c.
- *
- * The player-name prompt (202) and the About window (201) are NOT
- * DLOG/DITL at all -- they're plain WINDs, built entirely from real
- * native Control Manager controls at runtime, and dismissed via their
- * own event loop rather than ModalDialog. See the comments on WIND (202)
- * below, on WIND (201) below, and on PromptForPlayerName/OnAbout in
- * main.c for why.
+ * None of the four are DLOG/DITL -- they're all plain WINDs, built
+ * entirely from real native Control Manager controls at runtime (Static
+ * Text, Buttons, an Edit Text field, a Separator line), and dismissed
+ * via their own small WaitNextEvent loop rather than ModalDialog. This
+ * used to be DLOG/DITL for 200 and 203, tracked via ModalDialog, with
+ * SetThemeWindowBackground() called on the dialog's underlying window
+ * for its native Aqua panel background -- but ModalDialog's window
+ * apparently doesn't respect that call the way a plain Window-Manager
+ * window does (confirmed by screenshot: still plain white), matching
+ * why the player-name prompt already had to abandon ModalDialog for its
+ * Edit Text field (see the comment on WIND 202 below). Converting 200
+ * and 203 to the same plain-WIND architecture fixed it. See
+ * ShowMessage()/OnStatistics() in main.c.
  */
 
 #include "Types.r"
@@ -78,29 +72,14 @@ resource 'WIND' (128, "iWordle") {
     centerMainScreen
 };
 
-resource 'DLOG' (200, "Message") {
+resource 'WIND' (200, "Message") {
     { 0, 0, 140, 340 },
     dBoxProc,
-    visible,
+    invisible,
     noGoAway,
     0,
-    200,
     "",
     centerMainScreen
-};
-
-resource 'DITL' (200) {
-    {
-        { 0, 0, 76, 340 },
-        UserItem { enabled };
-
-        /* Standard Aqua push button height (20px); the OS 9 build's
-         * hand-drawn default-button ring doesn't exist here -- real
-         * Carbon on OS X draws the native pulsing-blue default-button
-         * glow itself once SetDialogDefaultItem() marks this item. */
-        { 100, 135, 120, 205 },
-        Button { enabled, "OK" };
-    }
 };
 
 /* Plain WIND, not DLOG/DITL -- a real documentProc/goAway window gets
@@ -146,35 +125,20 @@ resource 'WIND' (202, "Who's Playing?") {
     centerMainScreen
 };
 
-/* ---- Statistics scoreboard (DLOG 203 + DITL 203) ----
-   Item 1 is an inert UserItem, kept only to define the content rect
-   BuildStatsContent() (main.c) lays real Static Text controls and a
-   real CreateSeparatorControl() divider against -- see the top-of-file
-   comment. Item 2 is a plain "Clear" button (not the default action).
-   Item 3 is "OK" (dismiss) -- SetDialogDefaultItem() marks it as the
-   native default button, no hand-drawn ring item needed. */
-resource 'DLOG' (203, "Ranking") {
+/* ---- Statistics scoreboard (WIND 203) ----
+   OnStatistics() (main.c) builds the header row, divider, and every
+   player row out of real Static Text controls and a real
+   CreateSeparatorControl() divider (BuildStatsContent()), plus real
+   "Clear" and "OK" push buttons -- all added to this window at runtime,
+   same architecture as the message box (200) above. */
+resource 'WIND' (203, "Ranking") {
     { 0, 0, 300, 420 },
     dBoxProc,
-    visible,
+    invisible,
     noGoAway,
     0,
-    203,
-    "",
+    "Ranking",
     centerMainScreen
-};
-
-resource 'DITL' (203) {
-    {
-        { 0, 0, 250, 420 },
-        UserItem { enabled };
-
-        { 264, 30, 284, 110 },
-        Button { enabled, "Clear" };
-
-        { 264, 320, 284, 390 },
-        Button { enabled, "OK" };
-    }
 };
 
 /* ---------------------------------------------------------------------- */
