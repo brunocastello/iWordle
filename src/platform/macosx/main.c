@@ -894,8 +894,20 @@ static Boolean PromptForPlayerName(Str255 outName)
     AddLabel(w, windowRect.left, windowRect.right, 24, 20, kThemeAlertHeaderFont, teCenter,
              "\016Who's playing?");
 
+    /* kControlEditTextProc/NewControl() is the old CarbonLib-compatible
+     * classic Edit Text control -- no amount of SetControlFontStyle()
+     * coaxing got it to look like a real Aqua text field. Real OS X apps
+     * use CreateEditUnicodeTextControl() instead: Mac OS X 10.0+ only
+     * (not available on CarbonLib 1.x, i.e. genuinely OS X-native, not a
+     * classic-Mac-OS compatibility control), and passing NULL for the
+     * style parameter uses Apple's own real default styling instead of
+     * anything this code picks. */
     SetRect(&fieldRect, 60, 67, 260, 85);
-    gNameFieldControl = NewControl(w, &fieldRect, "\000", true, 0, 0, 0, kControlEditTextProc, 0L);
+    {
+        CFStringRef emptyStr = CFStringCreateWithCString(NULL, "", kCFStringEncodingMacRoman);
+        CreateEditUnicodeTextControl(w, &fieldRect, emptyStr, false, NULL, &gNameFieldControl);
+        if (emptyStr != NULL) CFRelease(emptyStr);
+    }
 
     /* Standard Aqua push button height (20px). */
     SetRect(&okRect, 125, 120, 195, 140);
@@ -905,20 +917,6 @@ static Boolean PromptForPlayerName(Str255 outName)
     if (gNameFieldControl != NULL && gLastPlayerName[0] > 0) {
         SetControlData(gNameFieldControl, kControlEditTextPart, kControlEditTextTextTag,
                         gLastPlayerName[0], (Ptr)(gLastPlayerName + 1));
-    }
-
-    /* NewControl()'s Edit Text defaults to a generic/non-native font in
-     * this toolchain (same underlying issue as every other hand-picked
-     * font in this file -- see [[project_theme_font_unreliable]]) --
-     * kThemeSystemFont via SetControlFontStyle() is what a real Aqua
-     * text field actually uses. Applied last, after the text content is
-     * set: setting kControlEditTextTextTag resets the control's font
-     * style back to default, so a style set before it gets clobbered. */
-    if (gNameFieldControl != NULL) {
-        ControlFontStyleRec fieldStyle;
-        fieldStyle.flags = kControlUseThemeFontIDMask;
-        fieldStyle.font = kThemeSystemFont;
-        SetControlFontStyle(gNameFieldControl, &fieldStyle);
     }
 
     ShowWindow(w);
@@ -1104,7 +1102,15 @@ static void BuildStatsContent(WindowRef win, const Rect *box)
     AddStatsControl(sep);
 
     if (gStats.playerCount == 0) {
-        AddStatsControl(AddLabel(win, box->left + 16, box->right - 16, box->top + 34, 16,
+        /* This 52-character line doesn't fit box->right - box->left - 32
+         * at kThemeSystemFont on one line -- the Static Text control
+         * word-wraps it, but a 16px-tall box only has room to show one
+         * line, so the wrapped second line was overlapping/clipping the
+         * first (that was the "glitch" after Clear, not stale pixels
+         * from the disposed row controls -- confirmed by screenshot:
+         * still happened even after EraseRect() ruled that out). Enough
+         * height for two wrapped lines fixes it. */
+        AddStatsControl(AddLabel(win, box->left + 16, box->right - 16, box->top + 34, 34,
                                   kThemeSystemFont, teFlushLeft,
                                   "\064No players yet -- win or lose a game to get started."));
         return;
