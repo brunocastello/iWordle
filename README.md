@@ -11,11 +11,6 @@ styled after the Mac OS 9.2 Platinum theme (Mac OS 9) / genuine Aqua chrome
   `powerpc-apple-darwin8` GCC cross-compiler against Apple's real
   `MacOSX10.4u.sdk`, producing a genuine Mach-O `.app` bundle.
 
-These are not a single "fat" binary and can't be — Mac OS 9 uses the classic
-PEF/CFM executable format and Mac OS X uses Mach-O, two container formats
-neither OS's loader understands from the other, independent of both targets
-sharing the same PowerPC instruction set.
-
 Prebuilt binaries for both platforms are published on the
 [Releases](../../releases) page. See [`PROJECT.md`](PROJECT.md) for the
 design spec and [`CLAUDE.md`](CLAUDE.md) for the technical constraints this
