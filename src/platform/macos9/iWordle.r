@@ -121,7 +121,7 @@ resource 'DITL' (200) {
  * straight rename of the old AboutContentDrawProc() DITL UserItem proc,
  * content unchanged). Starts invisible; OnAbout() shows it once ready. */
 resource 'WIND' (201, "About iWordle") {
-    { 0, 0, 280, 280 },
+    { 0, 0, 230, 280 },
     noGrowDocProc,
     invisible,
     goAway,
