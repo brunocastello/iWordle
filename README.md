@@ -1,5 +1,12 @@
 # iWordle
 
+> [!CAUTION]
+> ### 🤖 AI-Generated Code Ahead
+> **This entire repository was crafted with the help of AI.**
+>
+> If you are allergic to neural networks, synthesized functions, or autocomplete on steroids, **this repository is not for you**.
+> You are kindly invited to close this page and write your code line-by-line in `ed` or `vim`. Everyone else, enjoy!
+
 A native Wordle clone for classic Mac OS, built for PowerPC hardware and
 styled after the Mac OS 9.2 Platinum theme (Mac OS 9) / genuine Aqua chrome
 (Mac OS X). Two independent builds ship from this one repo:
