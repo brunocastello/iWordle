@@ -1,8 +1,9 @@
 # iWordle
 
-A native Wordle clone for classic Mac OS, built for PowerPC hardware and
-styled after the Mac OS 9.2 Platinum theme (Mac OS 9) / genuine Aqua chrome
-(Mac OS X). Two independent builds ship from this one repo:
+A native Wordle clone for classic Mac OS, built for PowerPC and 68k hardware
+and styled after the Mac OS 9.2 Platinum theme (Mac OS 9) / genuine Aqua chrome
+(Mac OS X) / classic 1-bit System 7 chrome (System 7). Three independent
+builds ship from this one repo:
 
 - **Mac OS 9** (`src/platform/macos9/`) — built with the
   [Retro68](https://github.com/autc04/Retro68) cross-toolchain, targeting
@@ -10,13 +11,19 @@ styled after the Mac OS 9.2 Platinum theme (Mac OS 9) / genuine Aqua chrome
 - **Mac OS X 10.0–10.5** (`src/platform/macosx/`) — built with a
   `powerpc-apple-darwin8` GCC cross-compiler against Apple's real
   `MacOSX10.4u.sdk`, producing a genuine Mach-O `.app` bundle.
+- **System 7.x** (`src/platform/system7/`) — built with Retro68's classic
+  **m68k** toolchain, targeting 68k Macs (developed against a System 7.1
+  Macintosh SE/30 with its built-in 512×342 1-bit screen) using the classic
+  Toolbox only, with no Carbon or Appearance Manager. It uses color on
+  machines with a color display and a 1-bit black/white/gray rendering on
+  monochrome ones.
 
 These are not a single "fat" binary and can't be — Mac OS 9 uses the classic
-PEF/CFM executable format and Mac OS X uses Mach-O, two container formats
-neither OS's loader understands from the other, independent of both targets
-sharing the same PowerPC instruction set.
+PEF/CFM executable format, Mac OS X uses Mach-O, and System 7 runs a plain
+68k code-resource application; the container formats differ and the CPU
+differs too (PowerPC vs. 68k).
 
-Prebuilt binaries for both platforms are published on the
+Prebuilt binaries for all three platforms are published on the
 [Releases](../../releases) page. See [`PROJECT.md`](PROJECT.md) for the
 design spec and [`CLAUDE.md`](CLAUDE.md) for the technical constraints this
 codebase follows.
@@ -26,7 +33,7 @@ resulting binaries are uploaded as workflow artifacts.
 
 ## Architecture
 
-The game is split into two layers so the same rules engine backs both
+The game is split into two layers so the same rules engine backs all
 platform front ends:
 
 - `src/core/` - portable C99 game engine (board state, guess evaluation,
@@ -38,12 +45,18 @@ platform front ends:
   architecture, but built against real Apple headers/SDK and using genuine
   native controls throughout (see "UI philosophy" below) instead of any
   hand-drawn content.
+- `src/platform/system7/` - the System 7 front end: the same event-loop
+  architecture and game flow, written against the classic Toolbox only (no
+  Carbon), with the classic Dialog Manager (`DLOG`/`DITL`) for its dialogs
+  and a 1-bit rendering path for monochrome screens. Built with Retro68's
+  m68k toolchain.
 
-Both front ends target Carbon rather than a 68K/PPC-only or Cocoa-only API,
-which is what made a from-scratch OS X port straightforward: the same
-Toolbox surface (Window/Menu/Control/Dialog Managers, `WaitNextEvent`)
-works natively on both, just linked against a different SDK/toolchain per
-platform.
+The Mac OS 9 and Mac OS X front ends target Carbon rather than a
+68K/PPC-only or Cocoa-only API, which is what made a from-scratch OS X port
+straightforward: the same Toolbox surface (Window/Menu/Control/Dialog
+Managers, `WaitNextEvent`) works natively on both, just linked against a
+different SDK/toolchain per platform. The System 7 front end predates Carbon
+and sticks to the original Toolbox calls.
 
 ## UI philosophy (Mac OS X port)
 
@@ -62,6 +75,9 @@ Building happens entirely in CI:
 
 - `.github/workflows/build.yml` — Mac OS 9, using the prebuilt
   `ghcr.io/autc04/retro68` Docker image.
+- `.github/workflows/build-system7.yml` — System 7, using the same
+  `ghcr.io/autc04/retro68` Docker image with its m68k toolchain; the job
+  also packs the app onto a 1.44 MB HFS floppy image with `hfsutils`.
 - `.github/workflows/build-macosx.yml` — Mac OS X, using a
   `powerpc-apple-darwin8` GCC cross-compiler + Apple's real
   `MacOSX10.4u.sdk`, with Retro68's `Rez` borrowed only for resource
@@ -96,6 +112,16 @@ containing:
   through tools that don't preserve resource forks natively.
 - `iWordle.sit` - a StuffIt archive of the app, resource fork intact.
 
+**System 7** workflow runs upload an `iWordle-system-7-68k` artifact
+containing:
+
+- `iWordle-floppy.img` - a 1.44 MB raw HFS floppy image containing just the
+  app. This is the file to hand to an emulator's floppy drive.
+- `iWordle.dsk` - a raw HFS disk image containing just the app.
+- `iWordle.APPL` - the application with its resource fork, as a folder your
+  emulator's host-file-sharing can mount directly.
+- `iWordle.bin` - a MacBinary-encoded copy of the app.
+
 **Mac OS X** workflow runs upload an `iWordle-mac-os-x-ppc` artifact
 containing:
 
@@ -123,6 +149,21 @@ volume) and run it.
 **Mac OS X**: mount `iWordle.dmg` inside a Mac OS X 10.0–10.5 PowerPC
 install running under `qemu-system-ppc`, and drag `iWordle.app` to
 Applications (or run it directly off the mounted volume).
+
+## Testing in MAME (SE/30)
+
+**System 7**: the 68k build is tested on a MAME-emulated Macintosh SE/30
+running System 7.1. Download and unzip the `iWordle-system-7-68k` artifact
+from the Actions run, then boot your own System 7.1 hard disk image with
+`iWordle-floppy.img` (in the artifact's `package/` folder) in the floppy
+drive:
+
+```bash
+mame se30 -hard1 <your System 7.1 disk>.chd -flop1 package/iWordle-floppy.img
+```
+
+The floppy mounts on the desktop as an ordinary HFS volume named `iWordle`.
+Drag `iWordle` onto the hard disk and run it from there.
 
 ## Controls
 
