@@ -41,8 +41,9 @@ jobs:
           # loader.system, so the program may use everything up to $BF00 (the
           # same trick cc65's docs describe for LOADER.SYSTEM). Our own code goes
           # to LOWCODE ($0803-$1FFF, below the hi-res page); only the runtime
-          # library lands in CODE at $4000. iobuf.s puts ProDOS's one file buffer on
-          # the unused text page ($0400) instead of the heap.
+          # library and main.c land in CODE at $4000. iobuf.s keeps ProDOS's one file
+          # buffer in BSS (not the text page, whose screen holes belong to slot
+          # firmware) instead of on the heap.
           cl65 --version 2>&1 | head -1
           cl65 -t apple2 -C apple2-hgr.cfg -Oirs -DWORDLE_EXTERNAL_DICTIONARY \
             --code-name LOWCODE -Wl -D,__HIMEM__=0xBF00 \

@@ -1,9 +1,15 @@
 ;
-; ProDOS 8 I/O buffer management for iWordle: one 1 KB buffer at $0400, the
-; text page, which is unused because every screen is hi-res. It replaces
-; cc65's default iobuf (posix_memalign on the heap), which costs ~1.4 KB of
-; code and a heap we do not have room for. Modelled on cc65's
+; ProDOS 8 I/O buffer management for iWordle: one 1 KB buffer in our own BSS.
+; It replaces cc65's default iobuf (posix_memalign on the heap), which costs
+; ~1.4 KB of code and a heap we do not have room for. Modelled on cc65's
 ; libsrc/apple2/extra/iobuf-0800.s.
+;
+; The buffer must not live on the text page ($0400-$07FF): although every
+; screen is hi-res, the "screen holes" there ($0478-$047F, $04F8-$04FF, ...)
+; are scratch RAM for slot firmware (SmartPort on the IIc/IIgs, Floppy Emu,
+; mouse, serial), so disk I/O could corrupt the buffer or the firmware.
+; ProDOS needs the buffer page-aligned, so 1024+255 bytes are reserved and
+; the first page boundary inside them is handed out.
 ;
 ; Only one file may be open at a time; a second open() fails with ENOMEM.
 ;
@@ -29,9 +35,12 @@ iobuf_alloc:
 :       lda     #$FF
         sta     used
 
-        ; *memptr = $0400
+        ; *memptr = first page boundary at or after iobuf
         ldy     #$01
-        lda     #>$0400
+        lda     #<iobuf
+        cmp     #$01            ; carry set if the low byte is not 0
+        lda     #>iobuf
+        adc     #$00
         sta     (ptr1),y
         dey
         tya                     ; A = 0 (success)
@@ -47,3 +56,7 @@ iobuf_free:
         .data
 
 used:   .byte   $00
+
+        .bss
+
+iobuf:  .res    1024+255
