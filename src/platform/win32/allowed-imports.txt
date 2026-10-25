@@ -56,6 +56,7 @@ KERNEL32.DLL!lstrcpyA
 KERNEL32.DLL!lstrcpynA
 KERNEL32.DLL!lstrlenA
 USER32.DLL!AdjustWindowRect
+USER32.DLL!AdjustWindowRectEx
 USER32.DLL!BeginPaint
 USER32.DLL!CharUpperA
 USER32.DLL!CreateWindowExA

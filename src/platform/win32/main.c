@@ -146,6 +146,7 @@ static void OnBackspace(void);
 static void OnSubmit(void);
 static void OnNewGame(void);
 static void OnGiveUp(void);
+static BOOL IsClassicWindows(void);
 static void OnAbout(void);
 
 static void CenterDialog(HWND hDlg);
@@ -806,18 +807,38 @@ static void OnStatistics(void)
     UpdateWindow(gWindow);
 }
 
+/* Windows 3.x (Win32s) and NT 3.51 report a major version below 4. They get
+ * the About box in their own dialog style (see OnAbout); 95 / NT 4 and later
+ * keep the 3D one. */
+static BOOL IsClassicWindows(void)
+{
+    return LOBYTE(LOWORD(GetVersion())) < 4;
+}
+
 static void OnAbout(void)
 {
     RECT work, frame;
     int w, h, x, y;
+    DWORD style, exStyle;
 
     if (gAbout != NULL) {           /* already up: bring it forward */
         SetForegroundWindow(gAbout);
         return;
     }
 
+    /* On 3.x the frame matches that era's About dialogs (a thick modal
+     * dialog border, a caption with no control-menu box, closed with OK or
+     * Esc); on 95 / NT 4 and later, a captioned window with a close box. */
+    if (IsClassicWindows()) {
+        style = WS_POPUP | WS_CAPTION;
+        exStyle = WS_EX_DLGMODALFRAME;
+    } else {
+        style = WS_CAPTION | WS_SYSMENU;
+        exStyle = 0;
+    }
+
     SetRect(&frame, 0, 0, ABOUT_W, ABOUT_H);
-    AdjustWindowRect(&frame, WS_CAPTION | WS_SYSMENU, FALSE);
+    AdjustWindowRectEx(&frame, style, FALSE, exStyle);
     w = frame.right - frame.left;
     h = frame.bottom - frame.top;
 
@@ -827,9 +848,8 @@ static void OnAbout(void)
     x = work.left + ((work.right - work.left) - w) / 2;
     y = work.top + ((work.bottom - work.top) - h) / 2;
 
-    gAbout = CreateWindow(ABOUT_CLASS, "About iWordle",
-                          WS_CAPTION | WS_SYSMENU,
-                          x, y, w, h, NULL, NULL, gInst, NULL);
+    gAbout = CreateWindowEx(exStyle, ABOUT_CLASS, "About iWordle", style,
+                            x, y, w, h, NULL, NULL, gInst, NULL);
     if (gAbout == NULL) return;
 
     CreateWindow("BUTTON", "OK", WS_CHILD | WS_VISIBLE | BS_DEFPUSHBUTTON,
@@ -1100,7 +1120,8 @@ static BOOL CreateMainWindow(int nCmdShow)
     if (!RegisterClass(&wc)) return FALSE;
 
     wc.lpfnWndProc = AboutProc;
-    wc.hbrBackground = (HBRUSH)(COLOR_BTNFACE + 1);
+    /* White on 3.x, like that era's dialogs; button face on 95 / NT 4+. */
+    wc.hbrBackground = (HBRUSH)((IsClassicWindows() ? COLOR_WINDOW : COLOR_BTNFACE) + 1);
     wc.lpszMenuName = NULL;
     wc.lpszClassName = ABOUT_CLASS;
     if (!RegisterClass(&wc)) return FALSE;
