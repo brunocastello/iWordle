@@ -359,7 +359,6 @@ static void BuildEndMessage(void)
         strcpy(gMsg, "THE WORD WAS ");
         strcat(gMsg, gGame.target);
     }
-    DrawMessageLine();
     gPending = 1;
 }
 
@@ -377,13 +376,17 @@ static void OnSubmit(void)
             DrawRow((unsigned char)gGame.currentRow
                 - (gGame.status == kGameInProgress));
             DrawKeys();
-            if (gGame.status != kGameInProgress) BuildEndMessage();
+            if (gGame.status != kGameInProgress) {
+                BuildEndMessage();
+                DrawMessageLine();
+            }
             break;
         default:
             break;
     }
 }
 
+/* Called from the menu; the board redraw that follows shows the message. */
 static void OnGiveUp(void)
 {
     gGame.status = kGameLost;

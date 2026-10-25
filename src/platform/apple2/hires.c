@@ -26,6 +26,11 @@ void HiresInit(void)
                 + ((y >> 3) & 7) * 0x80u + (y >> 6) * 0x28u);
     }
     HiresClear();
+    /* A IIe/IIc launcher may leave 80-column firmware state behind; on a
+     * II/II+ these addresses are harmless keyboard/annunciator mirrors. */
+    SW(0xC000) = 0;     /* 80STORE off, so $2000 is main hi-res page 1 */
+    SW(0xC00C) = 0;     /* 80-column display off */
+    (void)SW(0xC05F);   /* annunciator 3 off: no double hi-res */
     (void)SW(0xC050);   /* graphics */
     (void)SW(0xC052);   /* full screen */
     (void)SW(0xC054);   /* page 1 */
