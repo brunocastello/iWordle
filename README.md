@@ -18,12 +18,11 @@ Get the file for your computer from [Releases](../../releases):
 
 | Your computer | File |
 |---|---|
-| System 7 – Mac OS 8.1 (68k Macs) | `System7-68k-floppy.img` or `System7-68k-cd.iso` |
-| Mac OS 8.6 – 9.2 (PowerPC; 8.6 needs CarbonLib) | `MacOS9-PPC.sit` or `MacOS9-PPC-floppy.img` |
-| Mac OS X 10.4 – 10.14 (PowerPC or Intel) | `MacOSX-Universal.dmg` or `.zip` |
-| macOS 11 or later (Intel or Apple Silicon) | `macOS-Universal.dmg` or `.zip` |
-| Windows 95 – 11 | `IWORDLE.EXE`, in `Windows-x86.zip`, `.iso` or `-floppy.img` |
-| Windows 3.1 / 3.11 (with Win32s 1.30c) and NT 3.51 | `IWORD31.EXE`, in the same files |
+| macOS 11 or later (Intel or Apple Silicon) | `macOS11-Intel-AppleSilicon` `.dmg` or `.zip` |
+| Mac OS 8.6 – 9.2 (PowerPC; 8.6 needs CarbonLib) | `MacOS8.6-9.2-PowerPC` `.sit` or `-floppy.img` |
+| Mac OS X 10.4 – 10.14 (PowerPC or Intel) | `MacOSX10.4-10.14-PowerPC-Intel` `.dmg` or `.zip` |
+| System 7 – Mac OS 8.1 (68k Macs) | `System7-MacOS8.1-68k` `-floppy.img` or `-CD.iso` |
+| Windows 3.1 – 11 | `Windows3.1-11-x86` `.zip`, `.iso` or `-floppy.img`: run `IWORDLE.EXE` on Windows 95 – 11, or `IWORD31.EXE` on Windows 3.1 / 3.11 (with Win32s) and NT 3.51 |
 
 Copy the app to your hard disk before playing, so it can save your scores.
 
