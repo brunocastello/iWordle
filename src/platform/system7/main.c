@@ -69,10 +69,20 @@ enum {
 /* Board / keyboard layout                                                */
 /* ---------------------------------------------------------------------- */
 
-/* Window content is 304 x 286 (WIND 128 in iWordle.r). The widest row (the
+/* Window content is 304 x 293 at 100% (WIND 128 in iWordle.r). The widest row (the
  * bottom row: Enter + 7 letters + Delete) sets the content width and
  * everything else is centered within it. Recompute WIND's bounds in
- * iWordle.r if any of this moves. */
+ * iWordle.r if any of this moves.
+ *
+ * All of the values below are "design units": the layout at 100%. The window
+ * is resizable, and the Get*Rect helpers map design units to window pixels
+ * through gScale / gOffsetX / gOffsetY (see UpdateLayout). */
+#define DESIGN_W 304
+#define DESIGN_H 293
+#define LAYOUT_H 278                /* design-unit bottom of the keyboard */
+#define GROW_BOX_SIZE 15            /* the layout always fits above this band, so the
+                                     * grow box never covers a key at any scale */
+#define MIN_SCALE 600                  /* per mille: content can't go below 60% */
 #define MARGIN 8
 
 #define TILE_SIZE      28
@@ -124,6 +134,12 @@ static Boolean gHasColorQD = false;   /* Color QuickDraw present (not the same a
 static Boolean gUseColor = false;     /* cached UseColor(), refreshed on each full redraw */
 static Boolean gHasAppleEvents = false;
 
+/* Layout scale (per mille, aspect preserved) and the offset that centers the
+ * scaled design inside the window's content area; set by UpdateLayout. */
+static short gScale = 1000;
+static short gOffsetX = 0;
+static short gOffsetY = 0;
+
 /* UPPs are created once; on 68k they are plain procedure pointers. */
 static UserItemUPP gRingUPP;
 static UserItemUPP gTableUPP;
@@ -146,6 +162,13 @@ static void RecordGameResult(Boolean won);
 static void OnStatistics(void);
 
 static Boolean UseColor(void);
+static short ScaleLength(short v);
+static short ScaleFontSize(short n);
+static short ScaleOvalInset(short n);
+static void ScaleRect(Rect *r);
+static void UpdateLayout(short contentW, short contentH);
+static void OnWindowResized(void);
+static void DrawGrowBox(WindowPtr w);
 static void GetTileRect(short row, short col, Rect *outRect);
 static void GetLetterKeyRect(short row, short idx, Rect *outRect);
 static void GetBackspaceKeyRect(Rect *outRect);
@@ -195,11 +218,58 @@ static void RunEventLoop(void);
 /* Layout helpers                                                          */
 /* ---------------------------------------------------------------------- */
 
+static short ScaleLength(short v)
+{
+    return (short)(((long)v * gScale) / 1000);
+}
+
+/* Font sizes scale too, but never below 7 points (unreadable under that). */
+static short ScaleFontSize(short n)
+{
+    short v = ScaleLength(n);
+    return (v < 7) ? 7 : v;
+}
+
+/* The mono "present" badge inset, scaled, at least 1px. */
+static short ScaleOvalInset(short n)
+{
+    short v = ScaleLength(n);
+    return (v < 1) ? 1 : v;
+}
+
+static void ScaleRect(Rect *r)
+{
+    r->left = gOffsetX + ScaleLength(r->left);
+    r->top = gOffsetY + ScaleLength(r->top);
+    r->right = gOffsetX + ScaleLength(r->right);
+    r->bottom = gOffsetY + ScaleLength(r->bottom);
+}
+
+/* Picks the largest scale at which the whole design fits the content area
+ * and centers it. There are no cached fonts here, so this only sets the
+ * globals. */
+static void UpdateLayout(short contentW, short contentH)
+{
+    long sx, sy, scale;
+
+    if (contentW <= 0 || contentH <= 0) return;
+
+    sx = ((long)contentW * 1000) / DESIGN_W;
+    sy = ((long)(contentH - GROW_BOX_SIZE) * 1000) / LAYOUT_H;
+    scale = (sx < sy) ? sx : sy;
+    if (scale < 1) scale = 1;
+    gScale = (short)scale;
+
+    gOffsetX = (short)((contentW - ((long)DESIGN_W * gScale) / 1000) / 2);
+    gOffsetY = (short)((contentH - GROW_BOX_SIZE - ((long)LAYOUT_H * gScale) / 1000) / 2);
+}
+
 static void GetTileRect(short row, short col, Rect *outRect)
 {
     short top = BOARD_TOP + row * (TILE_SIZE + TILE_GAP);
     short left = BOARD_LEFT + col * (TILE_SIZE + TILE_GAP);
     SetRect(outRect, left, top, left + TILE_SIZE, top + TILE_SIZE);
+    ScaleRect(outRect);
 }
 
 static short KeyboardRowLeft(short row)
@@ -216,6 +286,7 @@ static void GetLetterKeyRect(short row, short idx, Rect *outRect)
     short top = KEYBOARD_TOP + row * (KEY_H + KEY_ROW_GAP);
     short left = KeyboardRowLeft(row) + idx * (KEY_W + KEY_GAP);
     SetRect(outRect, left, top, left + KEY_W, top + KEY_H);
+    ScaleRect(outRect);
 }
 
 static void GetBackspaceKeyRect(Rect *outRect)
@@ -223,6 +294,7 @@ static void GetBackspaceKeyRect(Rect *outRect)
     short top = KEYBOARD_TOP + 2 * (KEY_H + KEY_ROW_GAP);
     short left = KB_ROW2_LEFT + 7 * (KEY_W + KEY_GAP);
     SetRect(outRect, left, top, left + KB_WIDE_KEY_WIDTH, top + KEY_H);
+    ScaleRect(outRect);
 }
 
 /* Enter sits left of Z, mirroring Delete on the right (as in Wordle), so
@@ -232,6 +304,7 @@ static void GetEnterKeyRect(Rect *outRect)
     short top = KEYBOARD_TOP + 2 * (KEY_H + KEY_ROW_GAP);
     short left = KB_ROW2_LEFT - KEY_GAP - KB_WIDE_KEY_WIDTH;
     SetRect(outRect, left, top, left + KB_WIDE_KEY_WIDTH, top + KEY_H);
+    ScaleRect(outRect);
 }
 
 /* ---------------------------------------------------------------------- */
@@ -390,7 +463,8 @@ static void DrawTile(short row, short col)
     thick = (!gUseColor && state == kLetterEmpty && letter != 0 &&
              row == gGame.currentRow);
 
-    DrawCell(&r, state, label, kFontGeneva, 18, bold, 3, thick, false);
+    DrawCell(&r, state, label, kFontGeneva, ScaleFontSize(18), bold,
+             ScaleOvalInset(3), thick, false);
 }
 
 static void DrawKey(const Rect *r, char letter)
@@ -401,7 +475,8 @@ static void DrawKey(const Rect *r, char letter)
     label[0] = 1;
     label[1] = (unsigned char)letter;
 
-    DrawCell(r, state, label, kFontChicago, 12, normal, 2, false, true);
+    DrawCell(r, state, label, kFontChicago, ScaleFontSize(12), normal,
+             ScaleOvalInset(2), false, true);
 }
 
 /* longLabel in Chicago 12 if it fits inside the key, else shortLabel. */
@@ -410,7 +485,7 @@ static void DrawWideKey(const Rect *r, ConstStr255Param longLabel, ConstStr255Pa
     Str255 label;
 
     TextFont(kFontChicago);
-    TextSize(12);
+    TextSize(ScaleFontSize(12));
     TextFace(normal);
     if (StringWidth(longLabel) <= (r->right - r->left) - 6) {
         PStrCopy(label, longLabel);
@@ -418,7 +493,8 @@ static void DrawWideKey(const Rect *r, ConstStr255Param longLabel, ConstStr255Pa
         PStrCopy(label, shortLabel);
     }
 
-    DrawCell(r, kLetterEmpty, label, kFontChicago, 12, normal, 2, false, true);
+    DrawCell(r, kLetterEmpty, label, kFontChicago, ScaleFontSize(12), normal,
+             ScaleOvalInset(2), false, true);
 }
 
 static void DrawBackspaceKey(void)
@@ -449,6 +525,38 @@ static void DrawRow(short row)
     for (col = 0; col < WORDLE_WORD_LENGTH; col++) {
         DrawTile(row, col);
     }
+    SetPort(savePort);
+}
+
+/* The classic Window Manager leaves the grow icon to the application.
+ * DrawGrowIcon also draws the scroll-bar divider lines; clipping to just the
+ * 15x15 box keeps those off the board. The caller has set the port. */
+static void DrawGrowBox(WindowPtr w)
+{
+    RgnHandle saveClip = NewRgn();
+    Rect box = w->portRect;
+
+    GetClip(saveClip);
+    box.left = box.right - 15;
+    box.top = box.bottom - 15;
+    ClipRect(&box);
+    DrawGrowIcon(w);
+    SetClip(saveClip);
+    DisposeRgn(saveClip);
+}
+
+/* The window's content size changed (grow or zoom): re-fit the layout and
+ * repaint everything. The board moves, so no partial update. */
+static void OnWindowResized(void)
+{
+    GrafPtr savePort;
+
+    GetPort(&savePort);
+    SetPort(gWindow);
+    UpdateLayout(gWindow->portRect.right - gWindow->portRect.left,
+                 gWindow->portRect.bottom - gWindow->portRect.top);
+    EraseRect(&gWindow->portRect);
+    InvalRect(&gWindow->portRect);
     SetPort(savePort);
 }
 
@@ -1199,6 +1307,41 @@ static void HandleMouseDown(EventRecord *event)
             if (TrackGoAway(whichWindow, event->where)) gDone = true;
             break;
 
+        case inGrow:
+            if (whichWindow == gWindow) {
+                Rect sizeRect;
+                long newSize;
+
+                /* Classic GrowWindow order: top = min height, left = min
+                 * width, bottom = max height, right = max width. The max
+                 * height leaves room for the menu bar (20) and title bar. */
+                SetRect(&sizeRect,
+                        (short)(((long)DESIGN_W * MIN_SCALE) / 1000),
+                        (short)(((long)LAYOUT_H * MIN_SCALE) / 1000 + GROW_BOX_SIZE),
+                        qd.screenBits.bounds.right - qd.screenBits.bounds.left,
+                        qd.screenBits.bounds.bottom - qd.screenBits.bounds.top - 20 - 19);
+                newSize = GrowWindow(whichWindow, event->where, &sizeRect);
+                if (newSize != 0) {
+                    SizeWindow(whichWindow, LoWord(newSize), HiWord(newSize), true);
+                    OnWindowResized();
+                }
+            }
+            break;
+
+        case inZoomIn:
+        case inZoomOut:
+            if (whichWindow == gWindow && TrackBox(whichWindow, event->where, part)) {
+                GrafPtr savePort;
+
+                GetPort(&savePort);
+                SetPort(whichWindow);
+                EraseRect(&whichWindow->portRect);
+                ZoomWindow(whichWindow, part, false);
+                SetPort(savePort);
+                OnWindowResized();
+            }
+            break;
+
         case inContent:
             if (whichWindow != FrontWindow()) {
                 SelectWindow(whichWindow);
@@ -1261,6 +1404,7 @@ static void HandleUpdate(EventRecord *event)
     EraseRect(&w->portRect);
     DrawBoard();
     DrawKeyboard();
+    DrawGrowBox(w);
     EndUpdate(w);
     SetPort(savePort);
 }
@@ -1282,13 +1426,32 @@ static void HandleEvent(EventRecord *event)
         case keyDown:
         case autoKey:         HandleKeyDown(event);          break;
         case updateEvt:       HandleUpdate(event);           break;
-        case activateEvt:                                    break;
+        case activateEvt:
+            /* The grow icon looks different when the window is inactive; the
+             * rest of the content doesn't change. */
+            if ((WindowPtr)event->message == gWindow) {
+                GrafPtr savePort;
+
+                GetPort(&savePort);
+                SetPort(gWindow);
+                DrawGrowBox(gWindow);
+                SetPort(savePort);
+            }
+            break;
         case osEvt:
             /* doesActivateOnFGSwitch: suspend/resume double as our
              * deactivate/activate, so highlight the window ourselves. */
             if (((event->message >> 24) & 0xFF) == suspendResumeMessage) {
                 Boolean resume = (event->message & resumeFlag) != 0;
-                if (FrontWindow() == gWindow) HiliteWindow(gWindow, resume);
+                if (FrontWindow() == gWindow) {
+                    GrafPtr savePort;
+
+                    HiliteWindow(gWindow, resume);
+                    GetPort(&savePort);
+                    SetPort(gWindow);
+                    DrawGrowBox(gWindow);
+                    SetPort(savePort);
+                }
                 if (resume) InitCursor();
             }
             break;
@@ -1404,6 +1567,7 @@ int main(void)
     if (gWindow == NULL) ExitToShell();
     ShowWindow(gWindow);
     SetPort(gWindow);
+    UpdateLayout(DESIGN_W, DESIGN_H);
 
     LoadStats();
 
