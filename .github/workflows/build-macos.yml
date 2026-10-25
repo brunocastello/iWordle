@@ -22,7 +22,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Compile (Universal 2: x86_64 + arm64)
+      - name: "Compile (Universal 2: x86_64 + arm64)"
         run: |
           set -euo pipefail
           mkdir -p build
