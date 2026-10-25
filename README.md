@@ -137,6 +137,9 @@ flags and linked frameworks.
 **Mac OS 9** workflow runs upload an `iWordle-mac-os-9-ppc` artifact
 containing:
 
+- `iWordle-floppy.img` - a 1.44 MB raw HFS floppy image containing just the
+  app, for an emulator's floppy drive (or a real Mac's, via a USB floppy
+  writer).
 - `iWordle.dsk` - a raw HFS disk image containing just the app. This is the
   file to hand to an emulator.
 - `iWordle.APPL` - the application with its resource fork, as a folder your

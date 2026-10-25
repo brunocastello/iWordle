@@ -59,12 +59,28 @@ jobs:
           cp "build/%iWordle.ad" package/._iWordle
           /tmp/sit-src/sit -T APPL -C WRDL -o package/iWordle.sit package/iWordle
 
+      - name: Package 1.44 MB floppy image (HFS)
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y hfsutils
+          # Same as the System 7 build: a raw HFS floppy holding just the
+          # app. hcopy -m decodes the MacBinary file, so both forks and the
+          # type/creator land on the volume.
+          dd if=/dev/zero of=package/iWordle-floppy.img bs=512 count=2880
+          hformat -l iWordle package/iWordle-floppy.img
+          hmount package/iWordle-floppy.img
+          hcopy -m build/iWordle.bin :iWordle
+          hls -l
+          humount
+
       - name: Upload disk image + app bundle
         uses: actions/upload-artifact@v4
         with:
           name: iWordle-mac-os-9-ppc
           path: |
             build/iWordle.dsk
+            package/iWordle-floppy.img
             build/iWordle.APPL
             build/iWordle.bin
             package/iWordle.sit
