@@ -62,6 +62,13 @@ jobs:
           fi
           echo "---- header bytes ----"
           xxd build-apple2/IWORDLE | head -8
+          echo "---- soft switch check ----"
+          # cc65's optimizer once deleted every unused-value soft switch read,
+          # leaving the screen in text mode; make sure each BIT is there.
+          for sw in 50c0 52c0 54c0 57c0 10c0 30c0; do
+            xxd -p build-apple2/IWORDLE | tr -d '\n' | grep -q "2c$sw" \
+              || { echo "::error::no BIT \$${sw:2:2}${sw:0:2} in IWORDLE"; exit 1; }
+          done
 
       - name: Set up Java
         uses: actions/setup-java@v4

@@ -6,6 +6,11 @@
 
 #define SW(a) (*(volatile unsigned char *)(a))
 
+/* A read whose value is unused, for soft switches, the keyboard strobe and
+ * the speaker. cc65's optimizer deletes "(void)SW(a)" even with volatile,
+ * so this is an explicit BIT instruction. */
+#define TOUCH(a) __asm__ ("bit " a)
+
 unsigned long gTicks;
 
 static unsigned char *gRow[192];
@@ -30,16 +35,16 @@ void HiresInit(void)
      * II/II+ these addresses are harmless keyboard/annunciator mirrors. */
     SW(0xC000) = 0;     /* 80STORE off, so $2000 is main hi-res page 1 */
     SW(0xC00C) = 0;     /* 80-column display off */
-    (void)SW(0xC05F);   /* annunciator 3 off: no double hi-res */
-    (void)SW(0xC050);   /* graphics */
-    (void)SW(0xC052);   /* full screen */
-    (void)SW(0xC054);   /* page 1 */
-    (void)SW(0xC057);   /* hi-res */
+    TOUCH("$C05F");     /* annunciator 3 off: no double hi-res */
+    TOUCH("$C050");     /* graphics */
+    TOUCH("$C052");     /* full screen */
+    TOUCH("$C054");     /* page 1 */
+    TOUCH("$C057");     /* hi-res */
 }
 
 void HiresOff(void)
 {
-    (void)SW(0xC051);   /* back to text */
+    TOUCH("$C051");     /* back to text */
 }
 
 /* ---- Rectangles -------------------------------------------------------- */
@@ -141,7 +146,7 @@ unsigned char WaitKey(void)
     for (;;) {
         k = SW(0xC000);
         if (k & 0x80) {
-            (void)SW(0xC010);
+            TOUCH("$C010");
             return (unsigned char)(k & 0x7F);
         }
         gTicks++;
@@ -159,7 +164,7 @@ void Beep(void)
     unsigned char i, d;
 
     for (i = 0; i < 120; i++) {
-        (void)SW(0xC030);
+        TOUCH("$C030");  
         for (d = 0; d < 20; d++) { }
     }
 }
