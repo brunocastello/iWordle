@@ -1,4 +1,4 @@
-name: "Build (Windows 3.1 Win32s, 95 – ME, NT 3.51 – XP / x86)"
+name: "Build (Windows 3.1 – 11 / x86)"
 
 on:
   push:
