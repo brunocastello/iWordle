@@ -169,7 +169,7 @@ Drag `iWordle` onto the hard disk and run it from there.
 
 - Type letters with the physical keyboard, or click the on-screen keyboard.
 - **Return** submits a guess; **Delete** removes the last letter.
-  On System 7 the on-screen keyboard also has an **Enter** key, so the
+  The on-screen keyboard also has an **Enter** key (left of Z), so the
   game can be played with the mouse alone.
 - **File > New Game** starts over; **File > Ranking** (⌘R) shows
   per-player statistics, and opens automatically after a result is

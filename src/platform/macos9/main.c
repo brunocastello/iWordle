@@ -68,8 +68,8 @@ enum {
 #define KEYBOARD_TOP      398
 #define KB_ROW0_LEFT      MARGIN
 #define KB_ROW1_LEFT      38
-#define KB_ROW2_LEFT      33
-#define KB_BACKSPACE_WIDTH 100
+#define KB_ROW2_LEFT      86          /* letters, after the ENTER key */
+#define KB_WIDE_KEY_WIDTH 66          /* ENTER + gap + 7 keys + gap + BACK = 474 */
 #define KB_ROW_COUNT      3
 
 static const char * const kKBRows[KB_ROW_COUNT] = {
@@ -131,12 +131,14 @@ static void OnStatistics(void);
 static void GetTileRect(short row, short col, Rect *outRect);
 static void GetLetterKeyRect(short row, short idx, Rect *outRect);
 static void GetBackspaceKeyRect(Rect *outRect);
+static void GetEnterKeyRect(Rect *outRect);
 
 static void DrawBevelRect(const Rect *r, RGBColor fill);
 static void DrawCenteredLetter(const Rect *r, char letter, short fontSize, const RGBColor *color);
 static void DrawCenteredStringAt(short centerX, short baselineY, ConstStr255Param s);
 static void DrawTile(short row, short col);
 static void DrawKey(const Rect *r, char letter);
+static void DrawWideKey(const Rect *r, ConstStr255Param s);
 static void DrawBoard(void);
 static void DrawKeyboard(void);
 static void EraseBackground(WindowPtr w);
@@ -197,7 +199,16 @@ static void GetBackspaceKeyRect(Rect *outRect)
 {
     short top = KEYBOARD_TOP + 2 * (KEY_SIZE + KEY_ROW_GAP);
     short left = KB_ROW2_LEFT + 7 * (KEY_SIZE + KEY_GAP);
-    SetRect(outRect, left, top, left + KB_BACKSPACE_WIDTH, top + KEY_SIZE);
+    SetRect(outRect, left, top, left + KB_WIDE_KEY_WIDTH, top + KEY_SIZE);
+}
+
+/* ENTER sits left of Z, mirroring BACK on the right (as in Wordle), so
+ * mouse-only players can submit without the Return key. */
+static void GetEnterKeyRect(Rect *outRect)
+{
+    short top = KEYBOARD_TOP + 2 * (KEY_SIZE + KEY_ROW_GAP);
+    short left = KB_ROW2_LEFT - KEY_GAP - KB_WIDE_KEY_WIDTH;
+    SetRect(outRect, left, top, left + KB_WIDE_KEY_WIDTH, top + KEY_SIZE);
 }
 
 /* ---------------------------------------------------------------------- */
@@ -314,6 +325,21 @@ static void DrawKey(const Rect *r, char letter)
     SetForeColor(kColorBlack);
 }
 
+static void DrawWideKey(const Rect *r, ConstStr255Param s)
+{
+    short w;
+
+    DrawBevelRect(r, kColorKeyFace);
+    TextFont(kFontGeneva);
+    TextSize(14);
+    TextFace(bold);
+    SetForeColor(kColorBorder);
+    w = StringWidth(s);
+    MoveTo(r->left + ((r->right - r->left) - w) / 2, r->top + (r->bottom - r->top) / 2 + 5);
+    DrawString(s);
+    SetForeColor(kColorBlack);
+}
+
 static void DrawBoard(void)
 {
     short row, col;
@@ -337,25 +363,10 @@ static void DrawKeyboard(void)
         }
     }
 
+    GetEnterKeyRect(&r);
+    DrawWideKey(&r, "\pENTER");
     GetBackspaceKeyRect(&r);
-    DrawBevelRect(&r, kColorKeyFace);
-    {
-        Str255 s;
-        short w;
-        s[0] = 4;
-        s[1] = 'B';
-        s[2] = 'A';
-        s[3] = 'C';
-        s[4] = 'K';
-        TextFont(kFontGeneva);
-        TextSize(14);
-        TextFace(bold);
-        SetForeColor(kColorBorder);
-        w = StringWidth(s);
-        MoveTo(r.left + ((r.right - r.left) - w) / 2, r.top + (r.bottom - r.top) / 2 + 5);
-        DrawString(s);
-    }
-    SetForeColor(kColorBlack);
+    DrawWideKey(&r, "\pBACK");
 }
 
 static void EraseBackground(WindowPtr w)
@@ -1240,6 +1251,12 @@ static void HandleContentClick(Point local)
     GetBackspaceKeyRect(&r);
     if (PtInRect(local, &r)) {
         OnBackspace();
+        return;
+    }
+
+    GetEnterKeyRect(&r);
+    if (PtInRect(local, &r)) {
+        OnSubmit();
     }
 }
 
