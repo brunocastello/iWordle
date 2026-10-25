@@ -36,15 +36,28 @@ jobs:
 
       - name: Compile and link
         run: |
-          CC65_HOME="$(dirname "$(dirname "$(readlink -f "$(command -v cl65)")")")"
-          ls /usr/share/cc65/cfg/ | grep -i apple2 || true
+          # apple2-hgr.cfg links for a 38K machine (__HIMEM__ $9600, BASIC.SYSTEM's
+          # territory). Our disk has no BASIC.SYSTEM and starts through
+          # loader.system, so the program may use everything up to $BF00 (the
+          # same trick cc65's docs describe for LOADER.SYSTEM). Our own code goes
+          # to LOWCODE ($0803-$1FFF, below the hi-res page); only the runtime
+          # library lands in CODE at $4000.
           cl65 --version 2>&1 | head -1
           cl65 -t apple2 -C apple2-hgr.cfg -Oirs -DWORDLE_EXTERNAL_DICTIONARY \
-            -Wl -D,__HIMEM__=0xFFF0 -I src/core -m build-apple2/iwordle.map -o build-apple2/IWORDLE \
+            --code-name LOWCODE -Wl -D,__HIMEM__=0xBF00 \
+            -I src/core -m build-apple2/iwordle.map -o build-apple2/IWORDLE \
             src/core/wordle_engine.c src/core/wordle_stats.c src/platform/apple2/*.c
           ls -l build-apple2
           echo "---- segment list ----"
           sed -n '/^Segment list/,/^Exports list/p' build-apple2/iwordle.map
+          echo "---- memory check ----"
+          # LOWCODE must end before the hi-res page; ld65 cannot know that.
+          low_end=$(awk '$1=="LOWCODE"{print $3}' build-apple2/iwordle.map)
+          bss_end=$(awk '$1=="BSS"{print $3}' build-apple2/iwordle.map)
+          echo "LOWCODE ends at \$$low_end (limit \$001FFF), BSS ends at \$$bss_end (heap and stack above, up to \$00BF00)"
+          if [ $((16#$low_end)) -ge $((16#2000)) ]; then
+            echo "::error::LOWCODE overflows into the hi-res page"; exit 1
+          fi
           echo "---- header bytes ----"
           xxd build-apple2/IWORDLE | head -8
 
