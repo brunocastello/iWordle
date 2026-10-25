@@ -713,7 +713,7 @@ static void ShowAbout(void)
 
     NSFont *bold = [NSFont boldSystemFontOfSize:13];
     NSFont *small = [NSFont systemFontOfSize:NSFont.smallSystemFontSize];
-    AddAboutLabel(v, 54, 20, @"iWordle 1.1", bold, NSColor.labelColor);
+    AddAboutLabel(v, 54, 20, @"iWordle 1.2", bold, NSColor.labelColor);
     AddAboutLabel(v, 74, 18, @"A native Wordle clone for macOS", small, NSColor.secondaryLabelColor);
     AddAboutLabel(v, 100, 20, @"Bruno Castello", bold, NSColor.labelColor);
     AddAboutLabel(v, 120, 18, @"bfcastello@hotmail.com", small, NSColor.secondaryLabelColor);

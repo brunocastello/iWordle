@@ -819,7 +819,7 @@ static void DrawAboutWindowContent(WindowPtr w)
 
         TextFont(charcoalID);
         TextSize(12);
-        CStrToPStr(s, "iWordle 1.1");
+        CStrToPStr(s, "iWordle 1.2");
         DrawCenteredStringAt(midX, box.top + 64, s);
 
         TextFont(kFontGeneva);

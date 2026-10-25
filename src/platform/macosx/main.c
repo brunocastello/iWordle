@@ -855,7 +855,7 @@ static void OnAbout(void)
      * name/credit lines, matching TextEdit's own About window.
      * kThemeSmallSystemFont -- documented as "slightly smaller...
      * compared to kThemeSystemFont" -- one size down for the rest. */
-    CStrToPStr(s, "iWordle 1.1");
+    CStrToPStr(s, "iWordle 1.2");
     AddLabel(win, windowRect.left, windowRect.right, 54, 20, kThemeAlertHeaderFont, teCenter, s);
 
     CStrToPStr(s, "A native Wordle clone for Mac OS X");
