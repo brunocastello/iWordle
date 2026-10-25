@@ -1,15 +1,16 @@
-# CLAUDE.md - iWordle (Retro68 / Carbon, Mac OS 9 + Mac OS X + System 7)
+# CLAUDE.md - iWordle (Retro68 / Carbon, Mac OS 9 + Mac OS X + System 7 + Windows)
 
 ## Project Overview
-This repository contains a native Classic Mac OS / Carbon Wordle clone built for PowerPC and 68k hardware, shipped as **three separate builds**: Mac OS 9 (via Retro68), Mac OS X 10.0–10.5 (via a real Apple SDK cross-compiler), and System 7.x on 68k (via Retro68's m68k toolchain). They cannot be combined into one "fat" binary — Mac OS 9 uses PEF/CFM, Mac OS X uses Mach-O, and System 7 is a 68k application, different executable container formats (and, for System 7, a different CPU).
+This repository contains a native Classic Mac OS / Carbon Wordle clone built for PowerPC and 68k hardware, shipped as **four separate builds**: Mac OS 9 (via Retro68), Mac OS X 10.0–10.5 (via a real Apple SDK cross-compiler), System 7.x on 68k (via Retro68's m68k toolchain), and Windows NT 3.51–XP / 95–ME on x86 (via Open Watcom 1.9). They cannot be combined into one "fat" binary — Mac OS 9 uses PEF/CFM, Mac OS X uses Mach-O, System 7 is a 68k application and Windows is a PE executable, different executable container formats (and, for System 7 and Windows, different CPUs).
 
 - `src/core/` — the portable C99 game engine, shared by all platforms, with no Mac Toolbox/Carbon headers at all.
 - `src/platform/macos9/` — Mac OS 9 front end, built via `.github/workflows/build.yml` inside the `ghcr.io/autc04/retro68` Docker image, styled with the authentic **Mac OS 9.2 Platinum Theme**.
 - `src/platform/system7/` — System 7 front end for 68k Macs, built via `.github/workflows/build-system7.yml` inside the same `ghcr.io/autc04/retro68` Docker image but with the m68k toolchain (`CMakeLists.txt` branches on `CMAKE_SYSTEM_NAME`: `Retro68` selects this front end, anything else the Mac OS 9 one). Reuses `src/platform/macos9/icons.r`. Test rig: System 7.1 on a MAME-emulated Macintosh SE/30.
 - `src/platform/macosx/` — Mac OS X front end, built via `.github/workflows/build-macosx.yml` with a `powerpc-apple-darwin8-gcc` cross-compiler against Apple's real `MacOSX10.4u.sdk`, styled with genuine Aqua chrome. Retro68 is only used there for its `Rez` tool (resource compilation), not the compiler/runtime.
+- `src/platform/win32/` — Windows front end, built via `.github/workflows/build-win32.yml` on `ubuntu-latest` with Open Watcom 1.9 (`open-watcom/setup-watcom`), invoking `wcc386`/`wrc`/`wlink` directly (no CMake). One 32-bit PE `IWORDLE.EXE` for NT 3.51 through XP and 95/98/ME. The icon is generated in CI from `src/platform/macos9/icons.r` by `tools/mac_icon_to_ico.py`. Test rig: 95/98/ME, NT 4/2000 and XP VMs (NT 3.51 is a supported target but untested, so its constraints must be right by construction).
 
 ## Build & Test Commands
-Nothing is built locally — see the three GitHub Actions workflows above. `mkdir build && cd build && cmake .. && make` (Mac OS 9, inside the Retro68 Docker image) is what CI runs (System 7 does the same with the m68k toolchain file); the Mac OS X build needs Apple's non-redistributable SDK, so it only runs in CI.
+Nothing is built locally — see the four GitHub Actions workflows above. `mkdir build && cd build && cmake .. && make` (Mac OS 9, inside the Retro68 Docker image) is what CI runs (System 7 does the same with the m68k toolchain file); the Mac OS X build needs Apple's non-redistributable SDK, so it only runs in CI; the Windows build calls the Open Watcom tools directly from its workflow.
 
 ## Technical Guidelines & Constraints (all platforms)
 1. **Target Environment:** Classic Mac OS / Carbon targeting PowerPC (G3/G4) architectures — Mac OS 9.x via Retro68, Mac OS X 10.0–10.5 via a real Apple SDK. (System 7 is the exception: 68k, classic Toolbox — see below.)
@@ -45,3 +46,13 @@ A few non-obvious things this codebase learned about that toolchain, in case the
 - **Dialogs:** unlike Mac OS X, the classic Dialog Manager (`DLOG`/`DITL` + `ModalDialog`, `ALRT` + `NoteAlert`) is the *right*, native tool on System 7 — the OS X "no DLOG/DITL" rule does not apply here.
 - **Desk accessories:** the Apple menu lists the system's `DRVR` resources (`AppendResMenu` + `OpenDeskAcc`), clicks in system windows go to `SystemClick`, and a standard Edit menu is routed to `SystemEdit`.
 - **Palette:** the CLAUDE.md color palette applies on color displays only; monochrome displays use the 1-bit scheme above.
+
+## Windows specifics
+**Target:** 32-bit x86, ANSI Win32, built with Open Watcom 1.9 (a C89 compiler, so `src/core/` and `src/platform/win32/` stay C89: declarations at the top of each block, `/* */` comments only, no `//`, no `stdint`/`stdbool`, no `long long`). Guidelines 1 and 4's PowerPC/Carbon/Toolbox wording does not apply here.
+
+- **NT 3.51 is the compatibility floor.** The EXE is linked with `runtime windows=3.10` (NT 3.51 refuses images whose subsystem version is 4.0) and may import only **KERNEL32, USER32, GDI32 and COMCTL32**. CI audits the import table and fails the build on any other DLL, on any forbidden API, and (once `src/platform/win32/allowed-imports.txt` exists) on any import not listed in it.
+- **Forbidden APIs** (95/NT 4+ or later): `LoadImage`, `DrawEdge`, `DrawFrameControl`, `DrawState`, `RegisterClassEx`/`WNDCLASSEX`, `GetSysColorBrush`, `GetMenuItemInfo`/`SetMenuItemInfo`, `CheckMenuRadioItem`, `TrackMouseEvent`, anything from SHELL32, `GetFileAttributesEx`, `GradientFill`/`AlphaBlend`/`TransparentBlt`, `SetWindowLongPtr`, `InitCommonControlsEx`. Use only the Win 3.x system colors (`COLOR_BTNFACE`, `COLOR_BTNSHADOW`, `COLOR_BTNHIGHLIGHT`, `COLOR_BTNTEXT`, `COLOR_WINDOW`, `COLOR_WINDOWTEXT`, `COLOR_WINDOWFRAME`) and build brushes with `CreateSolidBrush(GetSysColor(...))`. `SystemParametersInfo(SPI_GETWORKAREA)` may be called but fails on NT 3.51, so fall back to `SM_CXSCREEN`/`SM_CYSCREEN`.
+- **ANSI only:** never define `UNICODE`/`_UNICODE`; Windows 95 has no working wide-character APIs.
+- **Screen:** the client area is 356×398 so the window fits a 640×480 Windows 95 desktop with a taskbar.
+- **Dialogs:** unlike Mac OS X, native `DIALOG` resources in `iWordle.rc` plus `DialogBoxParam` are the *right* tool here (`DS_MODALFRAME | DS_3DLOOK`, `MS Sans Serif` 8), and menus are standard resource menus. XP theming comes from the `iWordle.manifest` (comctl32 v6) plus `InitCommonControls`.
+- **Stats file:** `IWORDLE.DAT` next to the EXE (8.3 name, found via `GetModuleFileName`), a flat dump of `WordleStatsBook`; saving fails silently on read-only media. It is not shared with the Mac builds.

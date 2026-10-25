@@ -1,9 +1,10 @@
 # iWordle
 
-A native Wordle clone for classic Mac OS, built for PowerPC and 68k hardware
-and styled after the Mac OS 9.2 Platinum theme (Mac OS 9) / genuine Aqua chrome
-(Mac OS X) / classic 1-bit System 7 chrome (System 7). Three independent
-builds ship from this one repo:
+A native Wordle clone for classic Mac OS and classic Windows, built for
+PowerPC, 68k and x86 hardware and styled after the Mac OS 9.2 Platinum theme
+(Mac OS 9) / genuine Aqua chrome (Mac OS X) / classic 1-bit System 7 chrome
+(System 7) / the stock look of whichever Windows it runs on (Windows). Four
+independent builds ship from this one repo:
 
 - **Mac OS 9** (`src/platform/macos9/`) — built with the
   [Retro68](https://github.com/autc04/Retro68) cross-toolchain, targeting
@@ -17,13 +18,19 @@ builds ship from this one repo:
   Toolbox only, with no Carbon or Appearance Manager. It uses color on
   machines with a color display and a 1-bit black/white/gray rendering on
   monochrome ones.
+- **Windows NT 3.51 / 95 / 98 / ME / NT 4.0 / 2000 / XP**
+  (`src/platform/win32/`) — built with [Open Watcom](https://open-watcom.github.io/)
+  1.9 as a single 32-bit x86 PE executable (`IWORDLE.EXE`) that runs
+  unchanged on every one of those versions. It uses plain Win32 with native
+  menus, dialogs and system colors, so it looks 3.1-style on NT 3.51,
+  95-style on 95/NT 4.0/2000 and themed on XP.
 
 These are not a single "fat" binary and can't be — Mac OS 9 uses the classic
-PEF/CFM executable format, Mac OS X uses Mach-O, and System 7 runs a plain
-68k code-resource application; the container formats differ and the CPU
-differs too (PowerPC vs. 68k).
+PEF/CFM executable format, Mac OS X uses Mach-O, System 7 runs a plain
+68k code-resource application, and Windows uses the PE format; the container
+formats differ and so does the CPU (PowerPC vs. 68k vs. x86).
 
-Prebuilt binaries for all three platforms are published on the
+Prebuilt binaries for all four platforms are published on the
 [Releases](../../releases) page. See [`PROJECT.md`](PROJECT.md) for the
 design spec and [`CLAUDE.md`](CLAUDE.md) for the technical constraints this
 codebase follows.
@@ -50,6 +57,11 @@ platform front ends:
   Carbon), with the classic Dialog Manager (`DLOG`/`DITL`) for its dialogs
   and a 1-bit rendering path for monochrome screens. Built with Retro68's
   m68k toolchain.
+- `src/platform/win32/` - the Windows front end: a plain Win32 message loop
+  with native menus and `DIALOG` resources, restricted to the APIs that exist
+  on Windows NT 3.51 (KERNEL32, USER32, GDI32 and COMCTL32 only). Built with
+  Open Watcom 1.9; the icon is generated from the Mac icon family in CI by
+  `tools/mac_icon_to_ico.py`.
 
 The Mac OS 9 and Mac OS X front ends target Carbon rather than a
 68K/PPC-only or Cocoa-only API, which is what made a from-scratch OS X port
@@ -83,6 +95,10 @@ Building happens entirely in CI:
   `MacOSX10.4u.sdk`, with Retro68's `Rez` borrowed only for resource
   compilation (not the toolchain itself). The `.dmg` is assembled with
   `libdmg-hfsplus`, so no real Mac is needed to build one.
+- `.github/workflows/build-win32.yml` — Windows, using Open Watcom 1.9 on an
+  Ubuntu runner (`open-watcom/setup-watcom`). The job audits the EXE's import
+  table so it can't accidentally depend on anything newer than NT 3.51, then
+  packs the EXE into a zip, a 1.44 MB FAT floppy image and an ISO.
 
 To reproduce the Mac OS 9 build locally with Docker:
 
@@ -129,6 +145,15 @@ containing:
 - `iWordle.dmg` - a disk image containing the app, ready to mount and drag
   to Applications.
 
+**Windows** workflow runs upload an `iWordle-windows-x86` artifact
+containing:
+
+- `IWORDLE.EXE` - the game itself, a single 32-bit executable.
+- `iWordle-win32.zip` - the EXE, zipped.
+- `iWordle-floppy.img` - a 1.44 MB FAT floppy image containing just the EXE.
+- `iWordle.iso` - a CD image containing just the EXE.
+- `IWORDLE.MAP` - the linker map, for debugging.
+
 ## Testing in `qemu-system-ppc`
 
 **Mac OS 9**: download and unzip the `iWordle-mac-os-9-ppc` artifact from
@@ -165,6 +190,18 @@ mame se30 -hard1 <your System 7.1 disk>.chd -flop1 package/iWordle-floppy.img
 The floppy mounts on the desktop as an ordinary HFS volume named `iWordle`.
 Drag `iWordle` onto the hard disk and run it from there.
 
+## Testing on Windows
+
+Download and unzip the `iWordle-windows-x86` artifact from the Actions run,
+then mount `iWordle.iso` (or `iWordle-floppy.img` as a floppy) in
+VirtualBox, 86Box or VMware running Windows NT 3.51, 95, 98, ME, NT 4.0,
+2000 or XP.
+
+**Copy `IWORDLE.EXE` to the virtual hard disk before playing.** The ranking
+statistics are saved in `IWORDLE.DAT` next to the EXE, and a CD or floppy is
+read-only, so running it straight off the disc loses your stats. On XP under a
+limited account, keep the EXE somewhere writable (not in `Program Files`).
+
 ## Controls
 
 - Type letters with the physical keyboard, or click the on-screen keyboard.
@@ -174,3 +211,6 @@ Drag `iWordle` onto the hard disk and run it from there.
 - **File > New Game** starts over; **File > Ranking** (⌘R) shows
   per-player statistics, and opens automatically after a result is
   recorded; **File > End Game** (⌘W) gives up and reveals the word.
+- **Windows**: **F2** (or Ctrl+N) starts a new game, **Ctrl+R** shows the
+  ranking, and everything lives under the **Game** menu (**Game > End Game**
+  gives up and reveals the word).

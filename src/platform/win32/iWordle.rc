@@ -1,0 +1,115 @@
+/*
+ * iWordle - Win32 resources: icon, menu, accelerators, dialogs, version
+ * info and the XP visual-styles manifest. Built by Open Watcom's wrc from
+ * the CI workflow, run from build-win32/ (where iWordle.ico, generated from
+ * the Mac icon family, and a copy of iWordle.manifest live).
+ */
+
+#include <windows.h>
+#include "resource.h"
+
+IDI_APP ICON "iWordle.ico"
+
+/* RT_MANIFEST (24), id 1: themed controls on XP, ignored everywhere else. */
+1 24 "iWordle.manifest"
+
+IDM_MAIN MENU
+BEGIN
+    POPUP "&Game"
+    BEGIN
+        MENUITEM "&New Game\tF2",       IDM_NEWGAME
+        MENUITEM "&End Game",           IDM_ENDGAME
+        MENUITEM "&Ranking...\tCtrl+R", IDM_RANKING
+        MENUITEM SEPARATOR
+        MENUITEM "E&xit",               IDM_EXIT
+    END
+    POPUP "&Help"
+    BEGIN
+        MENUITEM "&About iWordle...",   IDM_ABOUT
+    END
+END
+
+IDA_MAIN ACCELERATORS
+BEGIN
+    VK_F2, IDM_NEWGAME, VIRTKEY
+    "^N",  IDM_NEWGAME
+    "^R",  IDM_RANKING
+END
+
+/* "Who's playing?" prompt shown after every finished game. */
+IDD_NAME DIALOG 0, 0, 180, 62
+STYLE DS_MODALFRAME | DS_3DLOOK | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "Who's Playing?"
+FONT 8, "MS Sans Serif"
+BEGIN
+    LTEXT           "Who's playing?", IDC_STATIC, 8, 8, 164, 8
+    EDITTEXT        IDC_NAME, 8, 20, 164, 12, ES_AUTOHSCROLL
+    DEFPUSHBUTTON   "OK", IDOK, 66, 42, 50, 14
+    PUSHBUTTON      "Cancel", IDCANCEL, 122, 42, 50, 14
+END
+
+/* Ranking table. Header statics line up with the list box tab stops set in
+ * RankingDlgProc (0, 110, 145, 180, 210 DLU from the list's left edge). */
+IDD_RANKING DIALOG 0, 0, 260, 160
+STYLE DS_MODALFRAME | DS_3DLOOK | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "Ranking"
+FONT 8, "MS Sans Serif"
+BEGIN
+    LTEXT           "Name",   IDC_STATIC, 12,  8, 90, 8
+    LTEXT           "Played", IDC_STATIC, 122, 8, 32, 8
+    LTEXT           "Win %",  IDC_STATIC, 157, 8, 32, 8
+    LTEXT           "Cur",    IDC_STATIC, 192, 8, 26, 8
+    LTEXT           "Max",    IDC_STATIC, 222, 8, 26, 8
+    LISTBOX         IDC_LIST, 10, 20, 240, 110,
+                    LBS_USETABSTOPS | LBS_NOSEL | LBS_NOINTEGRALHEIGHT |
+                    WS_VSCROLL | WS_BORDER
+    PUSHBUTTON      "&Clear", IDC_CLEAR, 10, 138, 50, 14
+    DEFPUSHBUTTON   "OK", IDOK, 200, 138, 50, 14
+END
+
+IDD_ABOUT DIALOG 0, 0, 180, 136
+STYLE DS_MODALFRAME | DS_3DLOOK | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "About iWordle"
+FONT 8, "MS Sans Serif"
+BEGIN
+    ICON            IDI_APP, IDC_STATIC, 79, 8, 0, 0
+    CTEXT           "iWordle 1.0", IDC_ABOUT_TITLE, 8, 34, 164, 10
+    CTEXT           "A native Wordle clone for Windows", IDC_STATIC, 8, 46, 164, 10
+    CTEXT           "Bruno Castello", IDC_ABOUT_AUTHOR, 8, 58, 164, 10
+    CTEXT           "bfcastello@hotmail.com", IDC_STATIC, 8, 70, 164, 10
+    CTEXT           "Engineer: Claude Sonnet 5", IDC_STATIC, 8, 82, 164, 10
+    CTEXT           "\251 Castello Designs, 2026", IDC_STATIC, 8, 94, 164, 10
+    CTEXT           "Built with Open Watcom", IDC_STATIC, 8, 106, 164, 10
+    DEFPUSHBUTTON   "OK", IDOK, 65, 118, 50, 14
+END
+
+/* Numeric values instead of the VS_/VFT_ names, so this does not depend on
+ * which header (ver.h / winver.h) the toolchain's windows.h pulls in. */
+1 VERSIONINFO
+FILEVERSION 1, 0, 0, 0
+PRODUCTVERSION 1, 0, 0, 0
+FILEFLAGSMASK 0x3F
+FILEFLAGS 0
+FILEOS 0x00040004L
+FILETYPE 1
+FILESUBTYPE 0
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "040904E4"
+        BEGIN
+            VALUE "CompanyName",      "Castello Designs\0"
+            VALUE "FileDescription",  "iWordle\0"
+            VALUE "FileVersion",      "1.0.0.0\0"
+            VALUE "InternalName",     "iWordle\0"
+            VALUE "LegalCopyright",   "\251 Castello Designs, 2026\0"
+            VALUE "OriginalFilename", "IWORDLE.EXE\0"
+            VALUE "ProductName",      "iWordle\0"
+            VALUE "ProductVersion",   "1.0.0.0\0"
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x0409, 1252
+    END
+END
