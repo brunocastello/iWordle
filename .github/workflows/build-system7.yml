@@ -62,12 +62,30 @@ jobs:
           hls -l
           humount
 
+      - name: Package Mac CD image (hybrid ISO9660/HFS with partition map)
+        run: |
+          set -euo pipefail
+          sudo apt-get install -y genisoimage
+
+          # A bare HFS volume (iWordle.dsk) has no Apple partition map, so
+          # Mac OS 8's CD-ROM driver offers to initialize it instead of
+          # mounting it (seen in QEMU's q800). -part writes the partition
+          # map old Mac CD drivers need, and --macbin decodes the MacBinary
+          # file back into an HFS file with both forks and type/creator.
+          mkdir -p cdroot
+          cp build-68k/iWordle.bin cdroot/iWordle.bin
+          genisoimage -hfs -part --macbin -r -J \
+                      -V iWordle -hfs-volid iWordle \
+                      -o package/iWordle-cd.iso cdroot
+          ls -la package
+
       - name: Upload floppy image + app
         uses: actions/upload-artifact@v4
         with:
           name: iWordle-system-7-68k
           path: |
             package/iWordle-floppy.img
+            package/iWordle-cd.iso
             build-68k/iWordle.bin
             build-68k/iWordle.dsk
             build-68k/iWordle.APPL
