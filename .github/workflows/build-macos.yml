@@ -1,0 +1,85 @@
+name: Build (macOS Universal / Cocoa)
+
+on:
+  push:
+    paths:
+      - 'src/core/**'
+      - 'src/platform/cocoa/**'
+      - 'src/platform/macosx/icons.r'
+      - '.github/workflows/build-macos.yml'
+  pull_request:
+    paths:
+      - 'src/core/**'
+      - 'src/platform/cocoa/**'
+      - 'src/platform/macosx/icons.r'
+      - '.github/workflows/build-macos.yml'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Compile (Universal 2: x86_64 + arm64)
+        run: |
+          set -euo pipefail
+          mkdir -p build
+          clang -arch x86_64 -arch arm64 -mmacosx-version-min=11.0 -fobjc-arc -O2 -Wall \
+            -Isrc/core \
+            src/core/wordle_engine.c src/core/wordle_stats.c src/platform/cocoa/main.m \
+            -framework AppKit -o build/iWordle
+          lipo -info build/iWordle
+          lipo -info build/iWordle | grep -q x86_64
+          lipo -info build/iWordle | grep -q arm64
+
+      - name: Extract app icon (.icns) from icons.r
+        run: |
+          set -euo pipefail
+          python3 - <<'PYEOF'
+          import re
+
+          content = open("src/platform/macosx/icons.r").read()
+          m = re.search(r"data 'icns' \(128\) \{(.*?)\};", content, re.DOTALL)
+          hex_str = "".join(re.findall(r'"([0-9A-Fa-f ]*)"', m.group(1))).replace(" ", "")
+          data = bytes.fromhex(hex_str)
+
+          assert data[:4] == b"icns", "bad magic"
+          size = int.from_bytes(data[4:8], "big")
+          assert size == len(data), "size mismatch"
+
+          import os
+          os.makedirs("build", exist_ok=True)
+          open("build/iWordle.icns", "wb").write(data)
+          PYEOF
+
+      - name: Assemble and ad-hoc sign .app bundle
+        run: |
+          set -euo pipefail
+          APP=package/iWordle.app
+          mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
+          cp build/iWordle "$APP/Contents/MacOS/iWordle"
+          chmod +x "$APP/Contents/MacOS/iWordle"
+          cp build/iWordle.icns "$APP/Contents/Resources/iWordle.icns"
+          cp src/platform/cocoa/Info.plist "$APP/Contents/Info.plist"
+          cp src/platform/cocoa/PkgInfo "$APP/Contents/PkgInfo"
+          # arm64 refuses to run unsigned code; ad-hoc is enough (not notarized).
+          codesign --force --deep -s - "$APP"
+          codesign --verify --verbose "$APP"
+
+      - name: Package (.zip and .dmg)
+        run: |
+          set -euo pipefail
+          ditto -c -k --keepParent package/iWordle.app package/iWordle-macos.zip
+          hdiutil create -volname iWordle -srcfolder package/iWordle.app -ov -format UDZO \
+            package/iWordle-macos.dmg
+
+      - name: Upload app bundle + disk image
+        uses: actions/upload-artifact@v4
+        with:
+          name: iWordle-macos-universal
+          path: |
+            package/iWordle-macos.zip
+            package/iWordle-macos.dmg
+          if-no-files-found: error

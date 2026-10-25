@@ -12,13 +12,16 @@ independent builds ship from this one repo:
 - **Mac OS X 10.0–10.5** (`src/platform/macosx/`) — built with a
   `powerpc-apple-darwin8` GCC cross-compiler against Apple's real
   `MacOSX10.4u.sdk`, producing a genuine Mach-O `.app` bundle.
+- **Modern macOS 11+** (`src/platform/cocoa/`) — a native AppKit app (one
+  Objective-C file, ARC, no nibs) built with `clang` on a `macos-latest`
+  runner as a Universal 2 binary (Intel `x86_64` + Apple Silicon `arm64`).
 - **System 7.x** (`src/platform/system7/`) — built with Retro68's classic
   **m68k** toolchain, targeting 68k Macs (developed against a System 7.1
   Macintosh SE/30 with its built-in 512×342 1-bit screen) using the classic
   Toolbox only, with no Carbon or Appearance Manager. It uses color on
   machines with a color display and a 1-bit black/white/gray rendering on
   monochrome ones.
-- **Windows NT 3.51 / 95 / 98 / ME / NT 4.0 / 2000 / XP**
+- **Windows 3.1 / 3.11 (with Win32s) / NT 3.51 / 95 / 98 / ME / NT 4.0 / 2000 / XP**
   (`src/platform/win32/`) — built with [Open Watcom](https://open-watcom.github.io/)
   1.9 as a single 32-bit x86 PE executable (`IWORDLE.EXE`) that runs
   unchanged on every one of those versions. It uses plain Win32 with native
@@ -30,7 +33,7 @@ PEF/CFM executable format, Mac OS X uses Mach-O, System 7 runs a plain
 68k code-resource application, and Windows uses the PE format; the container
 formats differ and so does the CPU (PowerPC vs. 68k vs. x86).
 
-Prebuilt binaries for all four platforms are published on the
+Prebuilt binaries for all five platforms are published on the
 [Releases](../../releases) page. See [`PROJECT.md`](PROJECT.md) for the
 design spec and [`CLAUDE.md`](CLAUDE.md) for the technical constraints this
 codebase follows.
@@ -59,7 +62,8 @@ platform front ends:
   m68k toolchain.
 - `src/platform/win32/` - the Windows front end: a plain Win32 message loop
   with native menus and `DIALOG` resources, restricted to the APIs that exist
-  on Windows NT 3.51 (KERNEL32, USER32, GDI32 and COMCTL32 only). Built with
+  on Windows NT 3.51 and Win32s (static imports from KERNEL32, USER32 and
+  GDI32 only; COMCTL32 is loaded dynamically). Built with
   Open Watcom 1.9; the icon is generated from the Mac icon family in CI by
   `tools/mac_icon_to_ico.py`.
 
@@ -95,6 +99,9 @@ Building happens entirely in CI:
   `MacOSX10.4u.sdk`, with Retro68's `Rez` borrowed only for resource
   compilation (not the toolchain itself). The `.dmg` is assembled with
   `libdmg-hfsplus`, so no real Mac is needed to build one.
+- `.github/workflows/build-macos.yml` — modern macOS 11+, on GitHub's
+  `macos-latest` runner with the Xcode command-line tools: one Universal 2
+  `clang` build, bundled and ad-hoc signed.
 - `.github/workflows/build-win32.yml` — Windows, using Open Watcom 1.9 on an
   Ubuntu runner (`open-watcom/setup-watcom`). The job audits the EXE's import
   table so it can't accidentally depend on anything newer than NT 3.51, then
@@ -149,6 +156,17 @@ containing:
 - `iWordle.dmg` - a disk image containing the app, ready to mount and drag
   to Applications.
 
+**Modern macOS** workflow runs upload an `iWordle-macos-universal` artifact
+containing:
+
+- `iWordle-macos.zip` - the Universal (Intel + Apple Silicon) `iWordle.app`
+  bundle, zipped.
+- `iWordle-macos.dmg` - a disk image containing the app.
+
+The app is ad-hoc signed but not notarized, so the first time, right-click
+`iWordle.app` and choose Open, or run
+`xattr -dr com.apple.quarantine iWordle.app`.
+
 **Windows** workflow runs upload an `iWordle-windows-x86` artifact
 containing:
 
@@ -200,6 +218,13 @@ Download and unzip the `iWordle-windows-x86` artifact from the Actions run,
 then mount `iWordle.iso` (or `iWordle-floppy.img` as a floppy) in
 VirtualBox, 86Box or VMware running Windows NT 3.51, 95, 98, ME, NT 4.0,
 2000 or XP.
+
+**Windows 3.1 / 3.11:** the same `IWORDLE.EXE` runs there through Microsoft's
+Win32s add-on. Install **Win32s 1.30c** first (the redistributable
+`PW1118.EXE` / `W32S130.ZIP`; Win32s includes the FreeCell test game, which is
+a good way to check it works). Then copy `IWORDLE.EXE` to the hard disk and run
+it from File Manager or Program Manager. Windows 3.1 VMs usually use the
+floppy image.
 
 **Copy `IWORDLE.EXE` to the virtual hard disk before playing.** The ranking
 statistics are saved in `IWORDLE.DAT` next to the EXE, and a CD or floppy is

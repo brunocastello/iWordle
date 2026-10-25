@@ -1,7 +1,6 @@
 # Every import IWORDLE.EXE may have, reviewed against NT 3.51 / Windows 95
 # availability. CI fails on anything not listed. Add new entries only after
 # checking the API exists on NT 3.51 and 95 (see CLAUDE.md, Windows specifics).
-COMCTL32.DLL!InitCommonControls
 GDI32.DLL!BitBlt
 GDI32.DLL!CreateCompatibleBitmap
 GDI32.DLL!CreateCompatibleDC
@@ -22,9 +21,9 @@ KERNEL32.DLL!CreateFileA
 KERNEL32.DLL!ExitProcess
 KERNEL32.DLL!FreeEnvironmentStringsA
 KERNEL32.DLL!GetACP
+KERNEL32.DLL!GetCPInfo
 KERNEL32.DLL!GetCommandLineA
 KERNEL32.DLL!GetCommandLineW
-KERNEL32.DLL!GetCPInfo
 KERNEL32.DLL!GetCurrentThreadId
 KERNEL32.DLL!GetEnvironmentStringsA
 KERNEL32.DLL!GetFileType
@@ -37,15 +36,13 @@ KERNEL32.DLL!GetStdHandle
 KERNEL32.DLL!GetTickCount
 KERNEL32.DLL!GetVersion
 KERNEL32.DLL!LoadLibraryA
-KERNEL32.DLL!lstrcpyA
-KERNEL32.DLL!lstrcpynA
-KERNEL32.DLL!lstrlenA
 KERNEL32.DLL!MulDiv
 KERNEL32.DLL!MultiByteToWideChar
 KERNEL32.DLL!ReadFile
 KERNEL32.DLL!SetConsoleCtrlHandler
 KERNEL32.DLL!SetEnvironmentVariableA
 KERNEL32.DLL!SetEnvironmentVariableW
+KERNEL32.DLL!SetErrorMode
 KERNEL32.DLL!SetStdHandle
 KERNEL32.DLL!SetUnhandledExceptionFilter
 KERNEL32.DLL!UnhandledExceptionFilter
@@ -54,6 +51,9 @@ KERNEL32.DLL!VirtualFree
 KERNEL32.DLL!VirtualQuery
 KERNEL32.DLL!WideCharToMultiByte
 KERNEL32.DLL!WriteFile
+KERNEL32.DLL!lstrcpyA
+KERNEL32.DLL!lstrcpynA
+KERNEL32.DLL!lstrlenA
 USER32.DLL!AdjustWindowRect
 USER32.DLL!BeginPaint
 USER32.DLL!CharUpperA

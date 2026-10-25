@@ -6,12 +6,13 @@
  * dialogs from iWordle.rc and a GDI-painted board. Built by Open Watcom 1.9
  * as a single 32-bit EXE that runs on Windows NT 3.51, 95/98/ME, NT 4.0,
  * 2000 and XP, so it sticks to the API set that exists on NT 3.51 (see
- * docs/win32-port-plan.md): KERNEL32, USER32, GDI32 and COMCTL32 only, no
- * UNICODE, no 3D-era system colors, no post-3.51 calls. C89 throughout.
+ * docs/win32-port-plan.md): static imports from KERNEL32, USER32 and GDI32
+ * only (COMCTL32 is loaded dynamically), no UNICODE, no 3D-era system colors,
+ * no post-3.51 calls. The same EXE also runs on Windows 3.1/3.11 under
+ * Win32s 1.30c (docs/win32s-plan.md). C89 throughout.
  */
 
 #include <windows.h>
-#include <commctrl.h>
 
 #include <string.h>
 #include <ctype.h>
@@ -1071,15 +1072,29 @@ static BOOL CreateMainWindow(int nCmdShow)
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow)
 {
     MSG msg;
+    HMODULE cc;
+    FARPROC initCC;
+    UINT oldErrorMode;
 
     (void)hPrevInstance;
     (void)lpCmdLine;
 
     gInst = hInstance;
 
-    /* Needed so the XP manifest's comctl32 v6 is activated; harmless on
-     * every other Windows. */
-    InitCommonControls();
+    /* Needed so the XP manifest's comctl32 v6 is activated. Loaded
+     * dynamically because Win32s has no COMCTL32.DLL, so a static import
+     * would stop the EXE loading on Windows 3.1. Win32s may report failure
+     * as a value below 32 rather than NULL. Never FreeLibrary it: XP's
+     * comctl32 v6 must stay loaded for theming. SEM_NOOPENFILEERRORBOX
+     * keeps Windows 3.1 from putting up a "Cannot find COMCTL32.DLL" box. */
+    oldErrorMode = SetErrorMode(SEM_NOOPENFILEERRORBOX);
+    cc = LoadLibrary("COMCTL32.DLL");
+    SetErrorMode(oldErrorMode);
+    if (cc != NULL && (UINT)cc >= 32) {
+        initCC = GetProcAddress(cc, "InitCommonControls");
+        if (initCC != NULL)
+            ((void (WINAPI *)(void))initCC)();
+    }
 
     WordleSeedRandom(GetTickCount());
     BuildStatsPath();

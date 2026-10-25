@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleName</key>
+	<string>iWordle</string>
+	<key>CFBundleDisplayName</key>
+	<string>iWordle</string>
+	<key>CFBundleIdentifier</key>
+	<string>com.castellodesigns.iWordle</string>
+	<key>CFBundleExecutable</key>
+	<string>iWordle</string>
+	<key>CFBundleIconFile</key>
+	<string>iWordle</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleSignature</key>
+	<string>WRDL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>1.0</string>
+	<key>CFBundleVersion</key>
+	<string>1</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>11.0</string>
+	<key>NSHighResolutionCapable</key>
+	<true/>
+	<key>NSPrincipalClass</key>
+	<string>NSApplication</string>
+	<key>NSHumanReadableCopyright</key>
+	<string>© Castello Designs, 2026</string>
+	<key>LSApplicationCategoryType</key>
+	<string>public.app-category.word-games</string>
+</dict>
+</plist>
