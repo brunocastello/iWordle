@@ -85,10 +85,10 @@ resource 'MENU' (129, "Edit") {
 /* Main document window                                                   */
 /* ---------------------------------------------------------------------- */
 
-/* Explicit bounds, content 292 wide x 286 tall: fits 512x342 with the menu
+/* Explicit bounds, content 304 wide x 286 tall: fits 512x342 with the menu
  * bar (20) and title bar (~19). Layout constants in main.c depend on it. */
 resource 'WIND' (128, "iWordle") {
-    { 40, 110, 326, 402 },
+    { 40, 104, 326, 408 },
     noGrowDocProc,
     visible,
     goAway,

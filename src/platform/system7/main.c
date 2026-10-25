@@ -69,25 +69,26 @@ enum {
 /* Board / keyboard layout                                                */
 /* ---------------------------------------------------------------------- */
 
-/* Window content is 292 x 286 (WIND 128 in iWordle.r). The widest row (the
- * 10-key QWERTY row) sets the content width and everything else is centered
- * within it. Recompute WIND's bounds in iWordle.r if any of this moves. */
+/* Window content is 304 x 286 (WIND 128 in iWordle.r). The widest row (the
+ * bottom row: Enter + 7 letters + Delete) sets the content width and
+ * everything else is centered within it. Recompute WIND's bounds in
+ * iWordle.r if any of this moves. */
 #define MARGIN 8
 
 #define TILE_SIZE      28
 #define TILE_GAP       4
 #define BOARD_TOP      MARGIN
-#define BOARD_LEFT     68              /* (292 - 156) / 2 */
+#define BOARD_LEFT     74              /* (304 - 156) / 2 */
 
 #define KEY_W              24
 #define KEY_H              22
 #define KEY_GAP            4
 #define KEY_ROW_GAP        4
 #define KEYBOARD_TOP       204         /* 8 + 188 + 8 */
-#define KB_ROW0_LEFT       MARGIN
-#define KB_ROW1_LEFT       22
-#define KB_ROW2_LEFT       22
-#define KB_BACKSPACE_WIDTH 52
+#define KB_ROW0_LEFT       14          /* 10 keys = 276, (304 - 276) / 2 */
+#define KB_ROW1_LEFT       28          /* 9 keys  = 248, (304 - 248) / 2 */
+#define KB_ROW2_LEFT       56          /* letters, after the Enter key */
+#define KB_WIDE_KEY_WIDTH  44          /* Enter + gap + 7 keys + gap + Delete = 288 */
 #define KB_ROW_COUNT       3
 
 static const char * const kKBRows[KB_ROW_COUNT] = {
@@ -148,6 +149,7 @@ static Boolean UseColor(void);
 static void GetTileRect(short row, short col, Rect *outRect);
 static void GetLetterKeyRect(short row, short idx, Rect *outRect);
 static void GetBackspaceKeyRect(Rect *outRect);
+static void GetEnterKeyRect(Rect *outRect);
 
 static void DrawCenteredLabel(const Rect *r, ConstStr255Param s, short font, short size, short face);
 static void DrawCell(const Rect *r, WordleLetterState state, ConstStr255Param label,
@@ -155,7 +157,9 @@ static void DrawCell(const Rect *r, WordleLetterState state, ConstStr255Param la
                      Boolean thickFrame, Boolean isKey);
 static void DrawTile(short row, short col);
 static void DrawKey(const Rect *r, char letter);
+static void DrawWideKey(const Rect *r, ConstStr255Param longLabel, ConstStr255Param shortLabel);
 static void DrawBackspaceKey(void);
+static void DrawEnterKey(void);
 static void DrawRow(short row);
 static void DrawBoard(void);
 static void DrawKeyboard(void);
@@ -218,7 +222,16 @@ static void GetBackspaceKeyRect(Rect *outRect)
 {
     short top = KEYBOARD_TOP + 2 * (KEY_H + KEY_ROW_GAP);
     short left = KB_ROW2_LEFT + 7 * (KEY_W + KEY_GAP);
-    SetRect(outRect, left, top, left + KB_BACKSPACE_WIDTH, top + KEY_H);
+    SetRect(outRect, left, top, left + KB_WIDE_KEY_WIDTH, top + KEY_H);
+}
+
+/* Enter sits left of Z, mirroring Delete on the right (as in Wordle), so
+ * mouse-only players can submit without the Return key. */
+static void GetEnterKeyRect(Rect *outRect)
+{
+    short top = KEYBOARD_TOP + 2 * (KEY_H + KEY_ROW_GAP);
+    short left = KB_ROW2_LEFT - KEY_GAP - KB_WIDE_KEY_WIDTH;
+    SetRect(outRect, left, top, left + KB_WIDE_KEY_WIDTH, top + KEY_H);
 }
 
 /* ---------------------------------------------------------------------- */
@@ -391,24 +404,35 @@ static void DrawKey(const Rect *r, char letter)
     DrawCell(r, state, label, kFontChicago, 12, normal, 2, false, true);
 }
 
-static void DrawBackspaceKey(void)
+/* longLabel in Chicago 12 if it fits inside the key, else shortLabel. */
+static void DrawWideKey(const Rect *r, ConstStr255Param longLabel, ConstStr255Param shortLabel)
 {
-    Rect r;
     Str255 label;
 
-    GetBackspaceKeyRect(&r);
-
-    /* "Delete" in Chicago 12 if it fits inside the key, else "Del". */
     TextFont(kFontChicago);
     TextSize(12);
     TextFace(normal);
-    if (StringWidth("\pDelete") <= (r.right - r.left) - 6) {
-        PStrCopy(label, "\pDelete");
+    if (StringWidth(longLabel) <= (r->right - r->left) - 6) {
+        PStrCopy(label, longLabel);
     } else {
-        PStrCopy(label, "\pDel");
+        PStrCopy(label, shortLabel);
     }
 
-    DrawCell(&r, kLetterEmpty, label, kFontChicago, 12, normal, 2, false, true);
+    DrawCell(r, kLetterEmpty, label, kFontChicago, 12, normal, 2, false, true);
+}
+
+static void DrawBackspaceKey(void)
+{
+    Rect r;
+    GetBackspaceKeyRect(&r);
+    DrawWideKey(&r, "\pDelete", "\pDel");
+}
+
+static void DrawEnterKey(void)
+{
+    Rect r;
+    GetEnterKeyRect(&r);
+    DrawWideKey(&r, "\pEnter", "\pEnt");
 }
 
 /* Redraws just one row of the board (used per keystroke: the typed row's
@@ -451,6 +475,7 @@ static void DrawKeyboard(void)
         }
     }
 
+    DrawEnterKey();
     DrawBackspaceKey();
 }
 
@@ -1067,6 +1092,12 @@ static void HandleContentClick(Point local)
     GetBackspaceKeyRect(&r);
     if (PtInRect(local, &r)) {
         OnBackspace();
+        return;
+    }
+
+    GetEnterKeyRect(&r);
+    if (PtInRect(local, &r)) {
+        OnSubmit();
     }
 }
 
