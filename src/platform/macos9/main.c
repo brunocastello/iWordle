@@ -52,7 +52,8 @@ enum {
 /* ---------------------------------------------------------------------- */
 
 /* Window content is sized to fit this layout with a MARGIN-wide border
- * on every side and nothing more; the widest row (10-key QWERTY row)
+ * on every side (plus 10px extra at the bottom, so the keyboard clears
+ * the documentProc grow box); the widest row (10-key QWERTY row)
  * sets the overall content width, and everything else is centered
  * within it. Recompute WIND's bounds in iWordle.r if any of this moves. */
 #define MARGIN 14

@@ -77,8 +77,9 @@ resource 'MENU' (128, "File") {
 /* Main document window                                                   */
 /* ---------------------------------------------------------------------- */
 
+/* 568 tall = 544 (keyboard bottom) + 24, clearing the 15px grow box. */
 resource 'WIND' (128, "iWordle") {
-    { 0, 0, 558, 502 },
+    { 0, 0, 568, 502 },
     documentProc,
     visible,
     goAway,
