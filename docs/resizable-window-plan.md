@@ -130,3 +130,5 @@ scales; System 7 overlapped it even at 100%. Each port therefore defines `LAYOUT
 `(contentH - GROW_BOX_SIZE) / LAYOUT_H` and centers the layout within
 `contentH - GROW_BOX_SIZE`, so a 15px band at the bottom always stays clear. The
 minimum content height is `LAYOUT_H × MIN_SCALE + GROW_BOX_SIZE`.
+
+**Follow-up (user screenshot, System 7):** with a band exactly 15px tall, a wide window left the Del key's bottom edge touching the grow box. The band is now `GROW_BAND = GROW_BOX_SIZE + 5`, so there's always a 5px gap. System 7's WIND 128 grows to 298 tall.

@@ -62,8 +62,9 @@ enum {
 #define DESIGN_W   502
 #define DESIGN_H   568
 #define LAYOUT_H 544                /* design-unit bottom of the keyboard */
-#define GROW_BOX_SIZE 15            /* the layout always fits above this band, so the
-                                     * grow box never covers a key at any scale */
+#define GROW_BOX_SIZE 15            /* the grow box in the bottom-right corner */
+#define GROW_BAND (GROW_BOX_SIZE + 5) /* the layout always fits above this band, so
+                                     * the grow box never touches a key at any scale */
 #define MIN_SCALE  600
 
 static const char * const kKBRows[KB_ROW_COUNT] = {
@@ -189,13 +190,13 @@ static void ScaleRect(Rect *r)
 static void UpdateLayout(short contentW, short contentH)
 {
     long sx = (long)contentW * 1000 / DESIGN_W;
-    long sy = (long)(contentH - GROW_BOX_SIZE) * 1000 / LAYOUT_H;
+    long sy = (long)(contentH - GROW_BAND) * 1000 / LAYOUT_H;
     long scale = sx < sy ? sx : sy;
 
     if (scale < 1) scale = 1;
     gScale = (short)scale;
     gOffsetX = (short)((contentW - (long)DESIGN_W * gScale / 1000) / 2);
-    gOffsetY = (short)((contentH - GROW_BOX_SIZE - (long)LAYOUT_H * gScale / 1000) / 2);
+    gOffsetY = (short)((contentH - GROW_BAND - (long)LAYOUT_H * gScale / 1000) / 2);
 }
 
 /* The board moves when the window changes size, so repaint everything. */
@@ -1466,7 +1467,7 @@ static void HandleMouseDown(EventRecord *event)
             Rect limits;
             GetQDGlobalsScreenBits(&screenBits);
             SetRect(&limits, (short)((long)DESIGN_W * MIN_SCALE / 1000),
-                    (short)((long)LAYOUT_H * MIN_SCALE / 1000 + GROW_BOX_SIZE),
+                    (short)((long)LAYOUT_H * MIN_SCALE / 1000 + GROW_BAND),
                     screenBits.bounds.right - screenBits.bounds.left,
                     screenBits.bounds.bottom - screenBits.bounds.top);
             if (ResizeWindow(whichWindow, event->where, &limits, NULL)) OnWindowResized();
