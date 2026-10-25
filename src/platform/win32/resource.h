@@ -26,14 +26,11 @@
 /* Dialogs */
 #define IDD_NAME            200
 #define IDD_RANKING         201
-#define IDD_ABOUT           202
 
 /* Dialog controls */
 #define IDC_NAME            300
 #define IDC_LIST            301
 #define IDC_CLEAR           302
-#define IDC_ABOUT_TITLE     303
-#define IDC_ABOUT_AUTHOR    304
 
 /* Menu commands */
 #define IDM_NEWGAME         400

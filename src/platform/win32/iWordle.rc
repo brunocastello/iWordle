@@ -67,22 +67,6 @@ BEGIN
     DEFPUSHBUTTON   "OK", IDOK, 200, 138, 50, 14
 END
 
-IDD_ABOUT DIALOG 0, 0, 180, 136
-STYLE DS_MODALFRAME | DS_3DLOOK | WS_POPUP | WS_CAPTION | WS_SYSMENU
-CAPTION "About iWordle"
-FONT 8, "MS Sans Serif"
-BEGIN
-    ICON            IDI_APP, IDC_STATIC, 79, 8, 0, 0
-    CTEXT           "iWordle 1.0", IDC_ABOUT_TITLE, 8, 34, 164, 10
-    CTEXT           "A native Wordle clone for Windows", IDC_STATIC, 8, 46, 164, 10
-    CTEXT           "Bruno Castello", IDC_ABOUT_AUTHOR, 8, 58, 164, 10
-    CTEXT           "bfcastello@hotmail.com", IDC_STATIC, 8, 70, 164, 10
-    CTEXT           "Engineer: Claude Sonnet 5", IDC_STATIC, 8, 82, 164, 10
-    CTEXT           "\251 Castello Designs, 2026", IDC_STATIC, 8, 94, 164, 10
-    CTEXT           "Built with Open Watcom", IDC_STATIC, 8, 106, 164, 10
-    DEFPUSHBUTTON   "OK", IDOK, 65, 118, 50, 14
-END
-
 /* Numeric values instead of the VS_/VFT_ names, so this does not depend on
  * which header (ver.h / winver.h) the toolchain's windows.h pulls in. */
 1 VERSIONINFO

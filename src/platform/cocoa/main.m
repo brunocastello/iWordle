@@ -59,6 +59,15 @@ static CGFloat gOffsetY = 0.0;
 
 static NSWindow *gWindow;
 static NSView *gBoardView;
+static NSWindow *gAbout;
+
+/* NSBezelStyleRegularSquare was renamed NSBezelStyleFlexiblePush (same value)
+ * in the macOS 26 SDK; use whichever the SDK in use declares. */
+#if defined(__MAC_26_0) && __MAC_OS_X_VERSION_MAX_ALLOWED >= __MAC_26_0
+#define KEY_BEZEL_STYLE NSBezelStyleFlexiblePush
+#else
+#define KEY_BEZEL_STYLE NSBezelStyleRegularSquare
+#endif
 
 static void UpdateLayout(NSSize size)
 {
@@ -125,6 +134,31 @@ static NSColor *ColorForState(WordleLetterState s)
         case kLetterAbsent:  return PaletteColor(0x78, 0x7C, 0x7E);
         default:             return nil;
     }
+}
+
+/* Empty-tile colors follow the system appearance (Wordle's light/dark scheme). */
+static NSColor *DynamicColor(NSColor *light, NSColor *dark)
+{
+    return [NSColor colorWithName:nil dynamicProvider:^NSColor *(NSAppearance *appearance) {
+        NSAppearanceName n = [appearance bestMatchFromAppearancesWithNames:
+                              @[NSAppearanceNameAqua, NSAppearanceNameDarkAqua]];
+        return [n isEqualToString:NSAppearanceNameDarkAqua] ? dark : light;
+    }];
+}
+
+static NSColor *TileFillColor(void)
+{
+    return DynamicColor(PaletteColor(0xFF, 0xFF, 0xFF), PaletteColor(0x12, 0x12, 0x13));
+}
+
+static NSColor *TileBorderColor(void)
+{
+    return DynamicColor(PaletteColor(0x33, 0x33, 0x33), PaletteColor(0x56, 0x57, 0x58));
+}
+
+static NSColor *TileLetterColor(void)
+{
+    return DynamicColor(PaletteColor(0x33, 0x33, 0x33), PaletteColor(0xFF, 0xFF, 0xFF));
 }
 
 /* ---------------------------------------------------------------------- */
@@ -352,9 +386,12 @@ static BOOL SheetShowing(void)
 /* Game actions                                                            */
 /* ---------------------------------------------------------------------- */
 
+static void RefreshKeys(void);
+
 static void Redraw(void)
 {
     gBoardView.needsDisplay = YES;
+    RefreshKeys();
 }
 
 static void FinishGame(BOOL won)
@@ -421,10 +458,17 @@ static void OnEndGame(void)
 /* Board view                                                              */
 /* ---------------------------------------------------------------------- */
 
+#define KEY_TAG_ENTER 1
+#define KEY_TAG_BACK  2
+
 @interface BoardView : NSView
+- (void)refreshKeys;
 @end
 
 @implementation BoardView
+{
+    NSMutableArray<NSButton *> *_keyButtons;
+}
 
 - (BOOL)isFlipped { return YES; }
 - (BOOL)acceptsFirstResponder { return YES; }
@@ -451,13 +495,13 @@ static void DrawTile(int row, int col)
     if (fill) {
         letter = wr->letters[col];
     } else {
-        fill = NSColor.whiteColor;
+        fill = TileFillColor();
         if (row == gGame.currentRow && col < gGame.currentCol) letter = wr->letters[col];
     }
 
     [fill setFill];
     NSRectFill(r);
-    [PaletteColor(0x33, 0x33, 0x33) setStroke];
+    [TileBorderColor() setStroke];
     NSBezierPath *frame = [NSBezierPath bezierPathWithRect:NSInsetRect(r, 0.5, 0.5)];
     frame.lineWidth = 1.0;
     [frame stroke];
@@ -465,22 +509,8 @@ static void DrawTile(int row, int col)
     if (letter) {
         NSString *s = [NSString stringWithFormat:@"%c", letter];
         DrawCentered(s, r, 28 * gScale,
-                     ColorForState(st) ? NSColor.whiteColor : PaletteColor(0x33, 0x33, 0x33));
+                     ColorForState(st) ? NSColor.whiteColor : TileLetterColor());
     }
-}
-
-static void DrawKey(NSRect r, NSString *label, WordleLetterState st, CGFloat fontSize)
-{
-    NSColor *face = ColorForState(st);
-    NSBezierPath *path = [NSBezierPath bezierPathWithRoundedRect:NSInsetRect(r, 0.5, 0.5)
-                                                         xRadius:4 * gScale
-                                                         yRadius:4 * gScale];
-    [(face ? face : NSColor.controlColor) setFill];
-    [path fill];
-    [NSColor.separatorColor setStroke];
-    path.lineWidth = 1.0;
-    [path stroke];
-    DrawCentered(label, r, fontSize * gScale, face ? NSColor.whiteColor : NSColor.controlTextColor);
 }
 
 - (void)drawRect:(NSRect)dirty
@@ -493,31 +523,85 @@ static void DrawKey(NSRect r, NSString *label, WordleLetterState st, CGFloat fon
     for (int r = 0; r < WORDLE_MAX_GUESSES; r++)
         for (int c = 0; c < WORDLE_WORD_LENGTH; c++)
             DrawTile(r, c);
-
-    for (int r = 0; r < KB_ROW_COUNT; r++) {
-        const char *row = kKBRows[r];
-        for (int i = 0; row[i]; i++) {
-            NSString *label = [NSString stringWithFormat:@"%c", row[i]];
-            DrawKey(GetLetterKeyRect(r, i), label, gGame.keyStates[row[i] - 'A'], 16);
-        }
-    }
-    DrawKey(GetEnterKeyRect(), @"ENTER", kLetterEmpty, 14);
-    DrawKey(GetBackspaceKeyRect(), @"BACK", kLetterEmpty, 14);
 }
 
-- (void)mouseDown:(NSEvent *)event
+- (void)layout
 {
+    [super layout];
     UpdateLayout(self.bounds.size);
-    NSPoint p = [self convertPoint:event.locationInWindow fromView:nil];
+    [self layoutKeys];
+}
 
-    if (NSPointInRect(p, GetEnterKeyRect())) { OnSubmit(); return; }
-    if (NSPointInRect(p, GetBackspaceKeyRect())) { OnBackspace(); return; }
-    for (int r = 0; r < KB_ROW_COUNT; r++) {
-        for (int i = 0; kKBRows[r][i]; i++) {
-            if (NSPointInRect(p, GetLetterKeyRect(r, i))) {
-                OnLetterKey(kKBRows[r][i]);
-                return;
-            }
+- (void)makeKey:(NSString *)label tag:(NSInteger)tag
+{
+    NSButton *b = [NSButton buttonWithTitle:label target:self action:@selector(keyPressed:)];
+    b.bezelStyle = KEY_BEZEL_STYLE;
+    b.refusesFirstResponder = YES;   /* typing stays with the board view */
+    b.tag = tag;
+    [self addSubview:b];
+    [_keyButtons addObject:b];
+}
+
+- (instancetype)initWithFrame:(NSRect)frame
+{
+    self = [super initWithFrame:frame];
+    if (self) {
+        _keyButtons = [NSMutableArray array];
+        for (int r = 0; r < KB_ROW_COUNT; r++)
+            for (int i = 0; kKBRows[r][i]; i++)
+                [self makeKey:[NSString stringWithFormat:@"%c", kKBRows[r][i]]
+                          tag:kKBRows[r][i]];
+        [self makeKey:@"ENTER" tag:KEY_TAG_ENTER];
+        [self makeKey:@"BACK" tag:KEY_TAG_BACK];
+    }
+    return self;
+}
+
+- (void)keyPressed:(NSButton *)sender
+{
+    if (sender.tag == KEY_TAG_ENTER) OnSubmit();
+    else if (sender.tag == KEY_TAG_BACK) OnBackspace();
+    else OnLetterKey((char)sender.tag);
+}
+
+/* Frames from the scaled layout helpers; the buttons are in creation order
+ * (letters row by row, then ENTER, then BACK). */
+- (void)layoutKeys
+{
+    NSUInteger n = 0;
+    for (int r = 0; r < KB_ROW_COUNT; r++)
+        for (int i = 0; kKBRows[r][i]; i++)
+            _keyButtons[n++].frame = GetLetterKeyRect(r, i);
+    _keyButtons[n++].frame = GetEnterKeyRect();
+    _keyButtons[n++].frame = GetBackspaceKeyRect();
+    [self refreshKeys];
+}
+
+/* Fonts (they scale with the window) and the state colors of the keys. */
+- (void)refreshKeys
+{
+    NSMutableParagraphStyle *para = [[NSMutableParagraphStyle alloc] init];
+    para.alignment = NSTextAlignmentCenter;
+
+    for (NSButton *b in _keyButtons) {
+        BOOL wide = (b.tag == KEY_TAG_ENTER || b.tag == KEY_TAG_BACK);
+        NSFont *font = [NSFont systemFontOfSize:(wide ? 14 : 16) * gScale
+                                         weight:NSFontWeightSemibold];
+        NSString *label = wide ? (b.tag == KEY_TAG_ENTER ? @"ENTER" : @"BACK")
+                               : [NSString stringWithFormat:@"%c", (char)b.tag];
+        NSColor *face = wide ? nil : ColorForState(gGame.keyStates[b.tag - 'A']);
+
+        b.font = font;
+        if (face) {
+            b.bezelColor = face;
+            b.attributedTitle = [[NSAttributedString alloc] initWithString:label attributes:@{
+                NSFontAttributeName: font,
+                NSForegroundColorAttributeName: NSColor.whiteColor,
+                NSParagraphStyleAttributeName: para
+            }];
+        } else {
+            b.bezelColor = nil;
+            b.title = label;
         }
     }
 }
@@ -544,6 +628,102 @@ static void DrawKey(NSRect r, NSString *label, WordleLetterState st, CGFloat fon
 }
 
 @end
+
+static void RefreshKeys(void)
+{
+    [(BoardView *)gBoardView refreshKeys];
+}
+
+/* ---------------------------------------------------------------------- */
+/* About window (mirrors the Mac OS X build)                               */
+/* ---------------------------------------------------------------------- */
+
+@interface FlippedView : NSView
+@end
+
+@implementation FlippedView
+- (BOOL)isFlipped { return YES; }
+@end
+
+@interface AboutWindow : NSWindow
+@end
+
+@implementation AboutWindow
+
+/* Esc */
+- (void)cancelOperation:(id)sender { [self performClose:nil]; }
+
+/* Return / Enter */
+- (void)keyDown:(NSEvent *)event
+{
+    NSString *chars = event.characters;
+    if (chars.length == 1 && ([chars characterAtIndex:0] == '\r' ||
+                              [chars characterAtIndex:0] == 0x03))
+        [self performClose:nil];
+    else
+        [super keyDown:event];
+}
+
+/* Cmd-W, before the menu bar's End Game gets it */
+- (BOOL)performKeyEquivalent:(NSEvent *)event
+{
+    if ((event.modifierFlags & NSEventModifierFlagDeviceIndependentFlagsMask) ==
+            NSEventModifierFlagCommand &&
+        [event.charactersIgnoringModifiers isEqualToString:@"w"]) {
+        [self performClose:nil];
+        return YES;
+    }
+    return [super performKeyEquivalent:event];
+}
+
+@end
+
+static void AddAboutLabel(NSView *parent, CGFloat top, CGFloat height, NSString *text,
+                          NSFont *font, NSColor *color)
+{
+    NSTextField *l = [NSTextField labelWithString:text];
+    l.font = font;
+    l.textColor = color;
+    l.alignment = NSTextAlignmentCenter;
+    l.frame = NSMakeRect(0, top, 280, height);
+    [parent addSubview:l];
+}
+
+static void ShowAbout(void)
+{
+    if (gAbout) {
+        [gAbout makeKeyAndOrderFront:nil];
+        return;
+    }
+
+    NSWindow *w = [[AboutWindow alloc] initWithContentRect:NSMakeRect(0, 0, 280, 230)
+                                                 styleMask:NSWindowStyleMaskTitled |
+                                                           NSWindowStyleMaskClosable
+                                                   backing:NSBackingStoreBuffered
+                                                     defer:NO];
+    w.title = @"About iWordle";
+    w.releasedWhenClosed = NO;
+
+    FlippedView *v = [[FlippedView alloc] initWithFrame:NSMakeRect(0, 0, 280, 230)];
+    w.contentView = v;
+
+    NSImageView *icon = [[NSImageView alloc] initWithFrame:NSMakeRect(124, 14, 32, 32)];
+    icon.image = NSApp.applicationIconImage;
+    [v addSubview:icon];
+
+    NSFont *bold = [NSFont boldSystemFontOfSize:13];
+    NSFont *small = [NSFont systemFontOfSize:NSFont.smallSystemFontSize];
+    AddAboutLabel(v, 54, 20, @"iWordle 1.0", bold, NSColor.labelColor);
+    AddAboutLabel(v, 74, 18, @"A native Wordle clone for macOS", small, NSColor.secondaryLabelColor);
+    AddAboutLabel(v, 100, 20, @"Bruno Castello", bold, NSColor.labelColor);
+    AddAboutLabel(v, 120, 18, @"bfcastello@hotmail.com", small, NSColor.secondaryLabelColor);
+    AddAboutLabel(v, 146, 20, @"Engineer: Claude Sonnet 5", bold, NSColor.labelColor);
+    AddAboutLabel(v, 172, 18, @"\u00A9 Castello Designs, 2026", small, NSColor.secondaryLabelColor);
+
+    [w center];
+    gAbout = w;
+    [w makeKeyAndOrderFront:nil];
+}
 
 /* ---------------------------------------------------------------------- */
 /* App delegate and menus                                                  */
@@ -603,8 +783,6 @@ static void DrawKey(NSRect r, NSString *label, WordleLetterState st, CGFloat fon
 
 - (void)applicationDidFinishLaunching:(NSNotification *)note
 {
-    NSApp.appearance = [NSAppearance appearanceNamed:NSAppearanceNameAqua];
-
     [self buildMenus];
 
     LoadStats();
@@ -642,32 +820,20 @@ static void DrawKey(NSRect r, NSString *label, WordleLetterState st, CGFloat fon
 - (BOOL)validateMenuItem:(NSMenuItem *)item
 {
     SEL a = item.action;
-    if (a == @selector(endGame:)) return gGame.status == kGameInProgress && !SheetShowing();
+    if (a == @selector(endGame:)) return gAbout.keyWindow || (gGame.status == kGameInProgress && !SheetShowing());
     if (a == @selector(newGame:) || a == @selector(showRanking:)) return !SheetShowing();
     return YES;
 }
 
 - (void)newGame:(id)sender { OnNewGame(); }
-- (void)endGame:(id)sender { OnEndGame(); }
+- (void)endGame:(id)sender
+{
+    if (gAbout.keyWindow) { [gAbout performClose:nil]; return; }   /* Cmd-W */
+    OnEndGame();
+}
 - (void)showRanking:(id)sender { ShowRanking(); }
 
-- (void)showAbout:(id)sender
-{
-    NSMutableParagraphStyle *para = [[NSMutableParagraphStyle alloc] init];
-    para.alignment = NSTextAlignmentCenter;
-    NSDictionary *attrs = @{
-        NSFontAttributeName: [NSFont systemFontOfSize:[NSFont smallSystemFontSize]],
-        NSForegroundColorAttributeName: NSColor.textColor,
-        NSParagraphStyleAttributeName: para
-    };
-    NSAttributedString *credits = [[NSAttributedString alloc]
-        initWithString:@"A native Wordle clone for macOS\nBruno Castello\nbfcastello@hotmail.com\nEngineer: Claude Sonnet 5"
-            attributes:attrs];
-    [NSApp orderFrontStandardAboutPanelWithOptions:@{
-        NSAboutPanelOptionCredits: credits,
-        NSAboutPanelOptionApplicationVersion: @"1.0"
-    }];
-}
+- (void)showAbout:(id)sender { ShowAbout(); }
 
 @end
 

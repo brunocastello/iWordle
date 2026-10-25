@@ -1,4 +1,4 @@
-name: Build (macOS Universal / Cocoa)
+name: "Build (macOS 11+ / Intel 64-bit + Apple Silicon)"
 
 on:
   push:
@@ -21,6 +21,13 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Select the newest installed Xcode
+        run: |
+          set -euo pipefail
+          sudo xcode-select -s "$(ls -d /Applications/Xcode*.app | sort -V | tail -1)"
+          xcodebuild -version
+          xcrun --show-sdk-version
 
       - name: "Compile (Universal 2: x86_64 + arm64)"
         run: |

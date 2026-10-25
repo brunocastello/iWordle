@@ -96,9 +96,12 @@ static HFONT gWideKeyFont;    /* Arial bold, 11px at 100% */
 /* Handed between PromptForPlayerName and NameDlgProc. */
 static char gDialogName[WORDLE_STATS_NAME_LEN + 1];
 
-/* Bold copy of the About box's font; created in WM_INITDIALOG, freed in
- * WM_DESTROY. */
-static HFONT gAboutBoldFont;
+/* The modeless About window, or NULL when it is closed. */
+static HWND gAbout;
+
+#define ABOUT_CLASS "iWordleAboutClass"
+#define ABOUT_W 280
+#define ABOUT_H 272           /* the Mac's 230 of content, plus the OK button */
 
 /* ---------------------------------------------------------------------- */
 /* Forward declarations                                                   */
@@ -149,7 +152,7 @@ static void CenterDialog(HWND hDlg);
 static void FillRankingList(HWND hDlg);
 static BOOL CALLBACK NameDlgProc(HWND hDlg, UINT msg, WPARAM wParam, LPARAM lParam);
 static BOOL CALLBACK RankingDlgProc(HWND hDlg, UINT msg, WPARAM wParam, LPARAM lParam);
-static BOOL CALLBACK AboutDlgProc(HWND hDlg, UINT msg, WPARAM wParam, LPARAM lParam);
+static LRESULT CALLBACK AboutProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
 static void HandleContentClick(POINT pt);
 static void HandleChar(WPARAM wParam, LPARAM lParam);
@@ -679,46 +682,81 @@ static BOOL CALLBACK RankingDlgProc(HWND hDlg, UINT msg, WPARAM wParam, LPARAM l
     return FALSE;
 }
 
-/* IDD_ABOUT: the title and author lines are the dialog font in bold. */
-static BOOL CALLBACK AboutDlgProc(HWND hDlg, UINT msg, WPARAM wParam, LPARAM lParam)
+/* The About box is the Mac one redrawn in Windows' typeface: a small window
+ * of its own, with the icon and seven centered lines at the OS 9 About's
+ * baseline offsets. The sizes are the Mac's pixels (72 dpi), so they scale
+ * against 96 rather than 72 to keep the same pixel height. */
+static HFONT AboutFont(int dpi, int px, int weight)
 {
-    HFONT dlgFont;
-    LOGFONT lf;
+    return CreateFont(-MulDiv(px, dpi, 96), 0, 0, 0, weight, 0, 0, 0,
+                      ANSI_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
+                      DEFAULT_QUALITY, VARIABLE_PITCH | FF_SWISS,
+                      "MS Sans Serif");
+}
 
-    (void)lParam;
+static const struct { int y; int px; int bold; const char *text; } kAbout[] = {
+    {  64, 12, 1, "iWordle 1.0"                       },
+    {  84, 10, 0, "A native Wordle clone for Windows" },
+    { 112, 10, 1, "Bruno Castello"                    },
+    { 132, 10, 0, "bfcastello@hotmail.com"            },
+    { 160, 10, 1, "Engineer: Claude Sonnet 5"         },
+    { 188, 10, 0, "\xA9 Castello Designs, 2026"       },
+    { 208, 10, 0, "Built with Open Watcom"            }
+};
+
+static LRESULT CALLBACK AboutProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
+{
+    PAINTSTRUCT ps;
+    HDC dc;
+    RECT area;
+    HFONT title, name, plain, old;
+    HICON icon;
+    int i, dpi, midX;
 
     switch (msg) {
-        case WM_INITDIALOG:
-            CenterDialog(hDlg);
-            dlgFont = (HFONT)SendMessage(hDlg, WM_GETFONT, 0, 0);
-            if (dlgFont != NULL &&
-                GetObject(dlgFont, sizeof(lf), &lf) != 0) {
-                lf.lfWeight = FW_BOLD;
-                gAboutBoldFont = CreateFontIndirect(&lf);
-                if (gAboutBoldFont != NULL) {
-                    SendDlgItemMessage(hDlg, IDC_ABOUT_TITLE, WM_SETFONT,
-                                       (WPARAM)gAboutBoldFont, 0);
-                    SendDlgItemMessage(hDlg, IDC_ABOUT_AUTHOR, WM_SETFONT,
-                                       (WPARAM)gAboutBoldFont, 0);
-                }
+        case WM_PAINT:
+            dc = BeginPaint(hwnd, &ps);
+            GetClientRect(hwnd, &area);
+            midX = (area.right - area.left) / 2;
+
+            /* DrawIcon, not DrawIconEx: the latter is not on Windows 3.1. */
+            icon = LoadIcon(gInst, MAKEINTRESOURCE(IDI_APP));
+            if (icon != NULL) DrawIcon(dc, midX - 16, 14, icon);
+
+            dpi = GetDeviceCaps(dc, LOGPIXELSY);
+            title = AboutFont(dpi, 12, FW_BOLD);
+            name = AboutFont(dpi, 10, FW_BOLD);
+            plain = AboutFont(dpi, 10, FW_NORMAL);
+
+            SetBkMode(dc, TRANSPARENT);
+            SetTextAlign(dc, TA_CENTER | TA_BASELINE);
+            old = (HFONT)SelectObject(dc, plain);
+            for (i = 0; i < (int)(sizeof(kAbout) / sizeof(kAbout[0])); i++) {
+                SelectObject(dc, !kAbout[i].bold ? plain
+                                 : (kAbout[i].px == 12 ? title : name));
+                TextOut(dc, midX, kAbout[i].y, kAbout[i].text,
+                        lstrlen(kAbout[i].text));
             }
-            return TRUE;
+            SelectObject(dc, old);
+            DeleteObject(title);
+            DeleteObject(name);
+            DeleteObject(plain);
+            EndPaint(hwnd, &ps);
+            return 0;
 
         case WM_COMMAND:
-            if (LOWORD(wParam) == IDOK || LOWORD(wParam) == IDCANCEL) {
-                EndDialog(hDlg, LOWORD(wParam));
-                return TRUE;
-            }
-            break;
+            if (LOWORD(wParam) == IDOK) DestroyWindow(hwnd);
+            return 0;
+
+        case WM_CLOSE:
+            DestroyWindow(hwnd);
+            return 0;
 
         case WM_DESTROY:
-            if (gAboutBoldFont != NULL) {
-                DeleteObject(gAboutBoldFont);
-                gAboutBoldFont = NULL;
-            }
-            break;
+            gAbout = NULL;
+            return 0;
     }
-    return FALSE;
+    return DefWindowProc(hwnd, msg, wParam, lParam);
 }
 
 /* Blocks until dismissed. Returns TRUE only if OK was hit with a non-blank
@@ -770,8 +808,36 @@ static void OnStatistics(void)
 
 static void OnAbout(void)
 {
-    DialogBoxParam(gInst, MAKEINTRESOURCE(IDD_ABOUT), gWindow, AboutDlgProc, 0);
-    UpdateWindow(gWindow);
+    RECT work, frame;
+    int w, h, x, y;
+
+    if (gAbout != NULL) {           /* already up: bring it forward */
+        SetForegroundWindow(gAbout);
+        return;
+    }
+
+    SetRect(&frame, 0, 0, ABOUT_W, ABOUT_H);
+    AdjustWindowRect(&frame, WS_CAPTION | WS_SYSMENU, FALSE);
+    w = frame.right - frame.left;
+    h = frame.bottom - frame.top;
+
+    if (!SystemParametersInfo(SPI_GETWORKAREA, 0, &work, 0)) {
+        SetRect(&work, 0, 0, GetSystemMetrics(SM_CXSCREEN), GetSystemMetrics(SM_CYSCREEN));
+    }
+    x = work.left + ((work.right - work.left) - w) / 2;
+    y = work.top + ((work.bottom - work.top) - h) / 2;
+
+    gAbout = CreateWindow(ABOUT_CLASS, "About iWordle",
+                          WS_CAPTION | WS_SYSMENU,
+                          x, y, w, h, NULL, NULL, gInst, NULL);
+    if (gAbout == NULL) return;
+
+    CreateWindow("BUTTON", "OK", WS_CHILD | WS_VISIBLE | BS_DEFPUSHBUTTON,
+                 (ABOUT_W - 76) / 2, 230, 76, 26,
+                 gAbout, (HMENU)IDOK, gInst, NULL);
+
+    ShowWindow(gAbout, SW_SHOW);
+    SetForegroundWindow(gAbout);
 }
 
 /* ---------------------------------------------------------------------- */
@@ -1033,6 +1099,12 @@ static BOOL CreateMainWindow(int nCmdShow)
     wc.lpszClassName = "iWordleMain";
     if (!RegisterClass(&wc)) return FALSE;
 
+    wc.lpfnWndProc = AboutProc;
+    wc.hbrBackground = (HBRUSH)(COLOR_BTNFACE + 1);
+    wc.lpszMenuName = NULL;
+    wc.lpszClassName = ABOUT_CLASS;
+    if (!RegisterClass(&wc)) return FALSE;
+
     if (!SystemParametersInfo(SPI_GETWORKAREA, 0, &work, 0)) {
         SetRect(&work, 0, 0, GetSystemMetrics(SM_CXSCREEN), GetSystemMetrics(SM_CYSCREEN));
     }
@@ -1120,6 +1192,8 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     }
 
     while (GetMessage(&msg, NULL, 0, 0)) {
+        /* Return and Esc close the About window, as in a real dialog. */
+        if (gAbout != NULL && IsDialogMessage(gAbout, &msg)) continue;
         if (gAccel == NULL || !TranslateAccelerator(gWindow, gAccel, &msg)) {
             TranslateMessage(&msg);
             DispatchMessage(&msg);

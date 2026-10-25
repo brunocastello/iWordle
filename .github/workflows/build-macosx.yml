@@ -1,4 +1,4 @@
-name: Build (Mac OS X Universal PowerPC + Intel / Carbon)
+name: "Build (Mac OS X 10.4 – 10.14 / PowerPC + Intel 32-bit)"
 
 on:
   push:

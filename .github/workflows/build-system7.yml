@@ -1,4 +1,4 @@
-name: Build (System 7 / 68k)
+name: "Build (System 7.0 – Mac OS 8.1 / 68k)"
 
 on:
   push:

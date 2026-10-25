@@ -5,16 +5,17 @@ GDI32.DLL!BitBlt
 GDI32.DLL!CreateCompatibleBitmap
 GDI32.DLL!CreateCompatibleDC
 GDI32.DLL!CreateFontA
-GDI32.DLL!CreateFontIndirectA
 GDI32.DLL!CreatePen
 GDI32.DLL!CreateSolidBrush
 GDI32.DLL!DeleteDC
 GDI32.DLL!DeleteObject
-GDI32.DLL!GetObjectA
+GDI32.DLL!GetDeviceCaps
 GDI32.DLL!Rectangle
 GDI32.DLL!SelectObject
 GDI32.DLL!SetBkMode
+GDI32.DLL!SetTextAlign
 GDI32.DLL!SetTextColor
+GDI32.DLL!TextOutA
 KERNEL32.DLL!CloseHandle
 KERNEL32.DLL!CreateEventA
 KERNEL32.DLL!CreateFileA
@@ -62,6 +63,7 @@ USER32.DLL!DefWindowProcA
 USER32.DLL!DestroyWindow
 USER32.DLL!DialogBoxParamA
 USER32.DLL!DispatchMessageA
+USER32.DLL!DrawIcon
 USER32.DLL!DrawTextA
 USER32.DLL!EnableMenuItem
 USER32.DLL!EndDialog
@@ -77,6 +79,7 @@ USER32.DLL!GetSysColor
 USER32.DLL!GetSystemMetrics
 USER32.DLL!GetWindowRect
 USER32.DLL!InvalidateRect
+USER32.DLL!IsDialogMessageA
 USER32.DLL!IsIconic
 USER32.DLL!LoadAcceleratorsA
 USER32.DLL!LoadCursorA
@@ -90,6 +93,7 @@ USER32.DLL!SendDlgItemMessageA
 USER32.DLL!SendMessageA
 USER32.DLL!SetDlgItemTextA
 USER32.DLL!SetFocus
+USER32.DLL!SetForegroundWindow
 USER32.DLL!SetRect
 USER32.DLL!SetWindowPos
 USER32.DLL!ShowWindow
