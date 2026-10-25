@@ -52,8 +52,8 @@ jobs:
           sed -n '/^Segment list/,/^Exports list/p' build-apple2/iwordle.map
           echo "---- memory check ----"
           # LOWCODE must end before the hi-res page; ld65 cannot know that.
-          low_end=$(awk '$1=="LOWCODE"{print $3}' build-apple2/iwordle.map)
-          bss_end=$(awk '$1=="BSS"{print $3}' build-apple2/iwordle.map)
+          low_end=$(awk '/^Segment list/{f=1} /^Exports list/{f=0} f&&$1=="LOWCODE"{print $3}' build-apple2/iwordle.map)
+          bss_end=$(awk '/^Segment list/{f=1} /^Exports list/{f=0} f&&$1=="BSS"{print $3}' build-apple2/iwordle.map)
           echo "LOWCODE ends at \$$low_end (limit \$001FFF), BSS ends at \$$bss_end (heap and stack above, up to \$00BF00)"
           if [ $((16#$low_end)) -ge $((16#2000)) ]; then
             echo "::error::LOWCODE overflows into the hi-res page"; exit 1
@@ -64,9 +64,13 @@ jobs:
       - name: Download disk tools
         run: |
           mkdir -p tools-dl
-          curl -fL -o tools-dl/ProDOS_2_4_3.po https://releases.prodos8.com/ProDOS_2_4_3.po
+          # releases.prodos8.com serves a mismatched TLS certificate, so plain
+          # http; the SHA-256 below is what guards the download.
+          curl -fL -o tools-dl/ProDOS_2_4_3.po http://releases.prodos8.com/ProDOS_2_4_3.po
           curl -fL -o tools-dl/ac.jar https://github.com/AppleCommander/AppleCommander/releases/download/15.1/AppleCommander-ac-15.1.jar
           sha256sum tools-dl/ProDOS_2_4_3.po tools-dl/ac.jar
+          echo "398d333cb2ab92df9f8bb2cf64b946f2567116910eb8359cf4bdee5d4194f0fa  tools-dl/ProDOS_2_4_3.po" | sha256sum -c -
+          echo "f936188a159a018ee5861984adeba0143c30bf20840112294ea45f3e47e6144f  tools-dl/ac.jar" | sha256sum -c -
 
       - name: Build the disk image
         run: |
