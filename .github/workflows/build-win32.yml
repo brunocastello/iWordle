@@ -65,19 +65,27 @@ jobs:
             wcc386 -q -bt=nt -3r -ox -w3 -ei -i=../src/core -i=../src/platform/win32 \
                    -i="$WATCOM/h" -i="$WATCOM/h/nt" -fo="$(basename "${f%.c}").obj" "$f"
           done
-          # "runtime windows=3.10" is essential: NT 3.51 refuses to load
-          # images whose subsystem version is 4.0.
-          wlink option quiet system nt_win name IWORDLE.EXE \
-                file wordle_engine.obj,wordle_stats.obj,main.obj \
-                libpath "$WATCOM/lib386" libpath "$WATCOM/lib386/nt" \
-                option resource=iWordle.res \
-                runtime windows=3.10 \
-                option map=IWORDLE.MAP
+          # Same objects, linked twice; only the subsystem version differs.
+          # IWORDLE.EXE is marked Windows 4.0, so 95/NT 4 and later give it
+          # the 3D look (window edges, 3D controls) and XP+ its themes.
+          # IWORD31.EXE is marked 3.10 because NT 3.51 refuses to load
+          # images marked 4.0; it's the one for Windows 3.1 (Win32s) and
+          # NT 3.51, which draw 3.x-style either way.
+          link() {
+            wlink option quiet system nt_win name "$1" \
+                  file wordle_engine.obj,wordle_stats.obj,main.obj \
+                  libpath "$WATCOM/lib386" libpath "$WATCOM/lib386/nt" \
+                  option resource=iWordle.res \
+                  runtime windows="$2" \
+                  option map="${1%.EXE}.MAP"
+          }
+          link IWORDLE.EXE 4.0
+          link IWORD31.EXE 3.10
           ls -la
           # The runtime's __setenvp faults under Win32s; main.c supplies
           # no-op replacements, which must be the ones that got linked.
-          grep -E '__setenvp_|__freeenvp_' IWORDLE.MAP
-          grep -A3 'Module: main.obj' IWORDLE.MAP || true
+          grep -E '__setenvp_|__freeenvp_' IWORD31.MAP
+          grep -A3 'Module: main.obj' IWORD31.MAP || true
 
       - name: Check relocations (Win32s)
         run: |
@@ -85,9 +93,9 @@ jobs:
           cd build-win32
           # Win32s loads EXEs at whatever shared base is free, so the EXE
           # must keep its .reloc section (never link with "option norelocs").
-          i686-w64-mingw32-objdump -h IWORDLE.EXE | tee sections.txt
+          i686-w64-mingw32-objdump -h IWORD31.EXE | tee sections.txt
           if ! grep -q '\.reloc' sections.txt; then
-            echo "::error::IWORDLE.EXE has no .reloc section; Win32s cannot load it"
+            echo "::error::IWORD31.EXE has no .reloc section; Win32s cannot load it"
             exit 1
           fi
 
@@ -95,8 +103,14 @@ jobs:
         run: |
           set -euo pipefail
           cd build-win32
-          i686-w64-mingw32-objdump -p IWORDLE.EXE > imports.txt
-          python3 -I - imports.txt ../src/platform/win32/allowed-imports.txt <<'PY'
+          # Both EXEs import the same functions (same code); each must also
+          # carry its own subsystem version. The NT 3.51 / Win32s API floor
+          # applies to both, so one source tree serves every Windows.
+          for pair in IWORDLE.EXE:4.0 IWORD31.EXE:3.10; do
+          exe=${pair%%:*}; want=${pair#*:}
+          echo "=== $exe (expect subsystem $want) ==="
+          i686-w64-mingw32-objdump -p "$exe" > imports.txt
+          python3 -I - imports.txt ../src/platform/win32/allowed-imports.txt "$want" <<'PY'
           import os
           import re
           import sys
@@ -174,9 +188,10 @@ jobs:
                   v = m.group(2)
                   ver[m.group(1)] = int(v, 16) if re.search('[a-fA-F]', v) else int(v)
                   print(line.strip())
-          if ver.get('Major') != 3 or ver.get('Minor') != 10:
-              problems.append('subsystem version is %s.%s, expected 3.10'
-                              % (ver.get('Major'), ver.get('Minor')))
+          want_major, want_minor = (int(x) for x in sys.argv[3].split('.'))
+          if ver.get('Major') != want_major or ver.get('Minor') != want_minor:
+              problems.append('subsystem version is %s.%s, expected %s'
+                              % (ver.get('Major'), ver.get('Minor'), sys.argv[3]))
 
           if problems:
               for p in problems:
@@ -184,18 +199,19 @@ jobs:
               sys.exit(1)
           print('Import audit passed.')
           PY
+          done
 
       - name: Package (zip, floppy image, ISO)
         run: |
           set -euo pipefail
           mkdir -p package
-          cp build-win32/IWORDLE.EXE package/
-          (cd package && zip -9 iWordle-win32.zip IWORDLE.EXE)
+          cp build-win32/IWORDLE.EXE build-win32/IWORD31.EXE package/
+          (cd package && zip -9 iWordle-win32.zip IWORDLE.EXE IWORD31.EXE)
           dd if=/dev/zero of=package/iWordle-floppy.img bs=512 count=2880
           mformat -i package/iWordle-floppy.img -f 1440 -v IWORDLE ::
-          mcopy -i package/iWordle-floppy.img package/IWORDLE.EXE ::
+          mcopy -i package/iWordle-floppy.img package/IWORDLE.EXE package/IWORD31.EXE ::
           mdir -i package/iWordle-floppy.img ::
-          mkdir -p iso && cp package/IWORDLE.EXE iso/
+          mkdir -p iso && cp package/IWORDLE.EXE package/IWORD31.EXE iso/
           genisoimage -quiet -J -r -V IWORDLE -o package/iWordle.iso iso
 
       - name: Upload EXE + disk images
@@ -204,8 +220,10 @@ jobs:
           name: iWordle-windows-x86
           path: |
             package/IWORDLE.EXE
+            package/IWORD31.EXE
             package/iWordle-win32.zip
             package/iWordle-floppy.img
             package/iWordle.iso
             build-win32/IWORDLE.MAP
+            build-win32/IWORD31.MAP
           if-no-files-found: error

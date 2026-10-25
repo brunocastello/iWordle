@@ -26,12 +26,17 @@ independent builds ship from this one repo:
   Toolbox only, with no Carbon or Appearance Manager. It uses color on
   machines with a color display and a 1-bit black/white/gray rendering on
   monochrome ones.
-- **Windows 3.1 / 3.11 (with Win32s) / NT 3.51 / 95 / 98 / ME / NT 4.0 / 2000 / XP**
-  (`src/platform/win32/`) — built with [Open Watcom](https://open-watcom.github.io/)
-  1.9 as a single 32-bit x86 PE executable (`IWORDLE.EXE`) that runs
-  unchanged on every one of those versions. It uses plain Win32 with native
-  menus, dialogs and system colors, so it looks 3.1-style on NT 3.51,
-  95-style on 95/NT 4.0/2000 and themed on XP.
+- **Windows 3.1 / 3.11 (with Win32s) through Windows 11** (`src/platform/win32/`)
+  — built with [Open Watcom](https://open-watcom.github.io/) 1.9 from one
+  source tree into two 32-bit x86 PE executables that differ only in the
+  Windows version marked in their header:
+  - `IWORDLE.EXE` (marked 4.0) for Windows 95 / 98 / ME, NT 4.0, 2000, XP,
+    Vista, 7, 8, 10 and 11. It gets the 3D look on 95/NT 4.0/2000 and native
+    themes on XP and later.
+  - `IWORD31.EXE` (marked 3.10) for Windows 3.1 / 3.11 with Win32s, and
+    NT 3.51, which refuses to load anything marked 4.0.
+
+  Both use plain Win32 with native menus, dialogs and system colors.
 
 These are not a single "fat" binary and can't be — Mac OS 9 uses the classic
 PEF/CFM executable format, Mac OS X uses Mach-O, System 7 runs a plain
@@ -175,9 +180,10 @@ The app is ad-hoc signed but not notarized, so the first time, right-click
 **Windows** workflow runs upload an `iWordle-windows-x86` artifact
 containing:
 
-- `IWORDLE.EXE` - the game itself, a single 32-bit executable.
-- `iWordle-win32.zip` - the EXE, zipped.
-- `iWordle-floppy.img` - a 1.44 MB FAT floppy image containing just the EXE.
+- `IWORDLE.EXE` - the game for Windows 95 / NT 4.0 and later, up to Windows 11.
+- `IWORD31.EXE` - the game for Windows 3.1 / 3.11 (Win32s) and NT 3.51.
+- `iWordle-win32.zip` - both EXEs, zipped.
+- `iWordle-floppy.img` - a 1.44 MB FAT floppy image containing both EXEs.
 - `iWordle.iso` - a CD image containing just the EXE.
 - `IWORDLE.MAP` - the linker map, for debugging.
 
@@ -222,17 +228,19 @@ Drag `iWordle` onto the hard disk and run it from there.
 
 Download and unzip the `iWordle-windows-x86` artifact from the Actions run,
 then mount `iWordle.iso` (or `iWordle-floppy.img` as a floppy) in
-VirtualBox, 86Box or VMware running Windows NT 3.51, 95, 98, ME, NT 4.0,
-2000 or XP.
+VirtualBox, 86Box or VMware running Windows 95, 98, ME, NT 4.0, 2000, XP or
+later, and run `IWORDLE.EXE`. On a current Windows 10/11 PC, just unzip
+`iWordle-win32.zip` somewhere writable and run `IWORDLE.EXE`.
 
-**Windows 3.1 / 3.11:** the same `IWORDLE.EXE` runs there through Microsoft's
+**Windows 3.1 / 3.11 and NT 3.51:** use `IWORD31.EXE` instead. On 3.1 it runs
+through Microsoft's
 Win32s add-on. Install **Win32s 1.30c** first (the redistributable
 `PW1118.EXE` / `W32S130.ZIP`; Win32s includes the FreeCell test game, which is
-a good way to check it works). Then copy `IWORDLE.EXE` to the hard disk and run
+a good way to check it works). Then copy `IWORD31.EXE` to the hard disk and run
 it from File Manager or Program Manager. Windows 3.1 VMs usually use the
 floppy image.
 
-**Copy `IWORDLE.EXE` to the virtual hard disk before playing.** The ranking
+**Copy the EXE to the virtual hard disk before playing.** The ranking
 statistics are saved in `IWORDLE.DAT` next to the EXE, and a CD or floppy is
 read-only, so running it straight off the disc loses your stats. On XP under a
 limited account, keep the EXE somewhere writable (not in `Program Files`).
