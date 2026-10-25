@@ -70,8 +70,8 @@ END
 /* Numeric values instead of the VS_/VFT_ names, so this does not depend on
  * which header (ver.h / winver.h) the toolchain's windows.h pulls in. */
 1 VERSIONINFO
-FILEVERSION 1, 1, 0, 0
-PRODUCTVERSION 1, 1, 0, 0
+FILEVERSION 1, 2, 0, 0
+PRODUCTVERSION 1, 2, 0, 0
 FILEFLAGSMASK 0x3F
 FILEFLAGS 0
 FILEOS 0x00040004L
@@ -84,12 +84,12 @@ BEGIN
         BEGIN
             VALUE "CompanyName",      "Castello Designs\0"
             VALUE "FileDescription",  "iWordle\0"
-            VALUE "FileVersion",      "1.1.0.0\0"
+            VALUE "FileVersion",      "1.2.0.0\0"
             VALUE "InternalName",     "iWordle\0"
             VALUE "LegalCopyright",   "\251 Castello Designs, 2026\0"
             VALUE "OriginalFilename", "IWORDLE.EXE\0"
             VALUE "ProductName",      "iWordle\0"
-            VALUE "ProductVersion",   "1.1.0.0\0"
+            VALUE "ProductVersion",   "1.2.0.0\0"
         END
     END
     BLOCK "VarFileInfo"

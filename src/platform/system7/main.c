@@ -799,7 +799,7 @@ static void DrawAboutWindowContent(WindowPtr w)
     lineRect.left = box.left;
     lineRect.right = box.right;
 
-    CStrToPStr(s, "iWordle 1.1");
+    CStrToPStr(s, "iWordle 1.2");
     lineRect.top = box.top + 54;  lineRect.bottom = lineRect.top + 14;
     DrawCenteredLabel(&lineRect, s, kFontChicago, 12, normal);
 

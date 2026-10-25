@@ -1,0 +1,117 @@
+name: "Build (Apple II / 6502)"
+
+on:
+  push:
+    paths:
+      - 'src/core/**'
+      - 'src/platform/apple2/**'
+      - 'tools/apple2_pack_words.py'
+      - '.github/workflows/build-apple2.yml'
+  pull_request:
+    paths:
+      - 'src/core/**'
+      - 'src/platform/apple2/**'
+      - 'tools/apple2_pack_words.py'
+      - '.github/workflows/build-apple2.yml'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install cc65
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cc65
+          cl65 --version 2>&1 | head -1
+
+      - name: Pack the dictionary
+        run: |
+          mkdir -p build-apple2
+          python3 -I tools/apple2_pack_words.py src/core/word_list.h build-apple2/WORDS.DAT
+          ls -l build-apple2/WORDS.DAT
+
+      - name: Compile and link
+        run: |
+          # apple2-hgr.cfg links for a 38K machine (__HIMEM__ $9600, BASIC.SYSTEM's
+          # territory). Our disk has no BASIC.SYSTEM and starts through
+          # loader.system, so the program may use everything up to $BF00 (the
+          # same trick cc65's docs describe for LOADER.SYSTEM). Our own code goes
+          # to LOWCODE ($0803-$1FFF, below the hi-res page); only the runtime
+          # library and main.c land in CODE at $4000. iobuf.s keeps ProDOS's one file
+          # buffer in BSS (not the text page, whose screen holes belong to slot
+          # firmware) instead of on the heap.
+          cl65 --version 2>&1 | head -1
+          cl65 -t apple2 -C apple2-hgr.cfg -Oirs -DWORDLE_EXTERNAL_DICTIONARY \
+            --code-name LOWCODE -Wl -D,__HIMEM__=0xBF00 \
+            -I src/core -m build-apple2/iwordle.map -o build-apple2/IWORDLE \
+            src/core/wordle_engine.c src/core/wordle_stats.c src/platform/apple2/*.c src/platform/apple2/iobuf.s
+          ls -l build-apple2
+          echo "---- segment list ----"
+          sed -n '/^Segment list/,/^Exports list/p' build-apple2/iwordle.map
+          echo "---- memory check ----"
+          # LOWCODE must end before the hi-res page; ld65 cannot know that.
+          low_end=$(awk '/^Segment list/{f=1} /^Exports list/{f=0} f&&$1=="LOWCODE"{print $3}' build-apple2/iwordle.map)
+          bss_end=$(awk '/^Segment list/{f=1} /^Exports list/{f=0} f&&$1=="BSS"{print $3}' build-apple2/iwordle.map)
+          echo "LOWCODE ends at \$$low_end (limit \$001FFF), BSS ends at \$$bss_end (heap and stack above, up to \$00BF00)"
+          if [ $((16#$low_end)) -ge $((16#2000)) ]; then
+            echo "::error::LOWCODE overflows into the hi-res page"; exit 1
+          fi
+          echo "---- header bytes ----"
+          xxd build-apple2/IWORDLE | head -8
+          echo "---- soft switch check ----"
+          # cc65's optimizer once deleted every unused-value soft switch read,
+          # leaving the screen in text mode; make sure each BIT is there.
+          for sw in 50c0 52c0 54c0 57c0 10c0 30c0; do
+            xxd -p build-apple2/IWORDLE | tr -d '\n' | grep -q "2c$sw" \
+              || { echo "::error::no BIT \$${sw:2:2}${sw:0:2} in IWORDLE"; exit 1; }
+          done
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '25'
+
+      - name: Download disk tools
+        run: |
+          mkdir -p tools-dl
+          # releases.prodos8.com serves a mismatched TLS certificate, so plain
+          # http; the SHA-256 below is what guards the download.
+          curl -fL -o tools-dl/ProDOS_2_4_3.po http://releases.prodos8.com/ProDOS_2_4_3.po
+          curl -fL -o tools-dl/ac.jar https://github.com/AppleCommander/AppleCommander/releases/download/15.1/AppleCommander-ac-15.1.jar
+          sha256sum tools-dl/ProDOS_2_4_3.po tools-dl/ac.jar
+          echo "398d333cb2ab92df9f8bb2cf64b946f2567116910eb8359cf4bdee5d4194f0fa  tools-dl/ProDOS_2_4_3.po" | sha256sum -c -
+          echo "f936188a159a018ee5861984adeba0143c30bf20840112294ea45f3e47e6144f  tools-dl/ac.jar" | sha256sum -c -
+
+      - name: Build the disk image
+        run: |
+          AC="java -jar tools-dl/ac.jar"
+          PO=build-apple2/iWordle.po
+          SHARE="$(dirname "$(dirname "$(dirname "$(command -v cl65)")")")/share/cc65"
+          [ -d "$SHARE" ] || SHARE=/usr/share/cc65
+          LOADER="$SHARE/target/apple2/util/loader.system"
+          ls -l "$LOADER"
+          rm -f "$PO"
+          $AC -pro140 "$PO" IWORDLE
+          dd if=tools-dl/ProDOS_2_4_3.po of="$PO" bs=512 count=2 conv=notrunc
+          $AC -g tools-dl/ProDOS_2_4_3.po PRODOS > build-apple2/PRODOS
+          $AC -p "$PO" PRODOS SYS 0x0000 < build-apple2/PRODOS
+          $AC -p "$PO" IWORDLE.SYSTEM SYS 0x2000 < "$LOADER"
+          $AC -as "$PO" IWORDLE < build-apple2/IWORDLE
+          $AC -p "$PO" WORDS.DAT BIN 0x0000 < build-apple2/WORDS.DAT
+          $AC -l "$PO"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: iWordle-apple-ii
+          path: |
+            build-apple2/iWordle.po
+            build-apple2/IWORDLE
+            build-apple2/WORDS.DAT
+            build-apple2/iwordle.map
+          if-no-files-found: error
