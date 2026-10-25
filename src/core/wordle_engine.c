@@ -1,5 +1,10 @@
 #include "wordle_engine.h"
+#ifdef WORDLE_EXTERNAL_DICTIONARY
+/* The platform owns the word lists (the Apple II loads them packed from
+ * disk); see wordle_engine.h. */
+#else
 #include "word_list.h"
+#endif
 
 #include <string.h>
 
@@ -21,6 +26,9 @@ static unsigned long NextRandom(void)
 
 int WordleIsValidWord(const char *word5)
 {
+#ifdef WORDLE_EXTERNAL_DICTIONARY
+    return WordleDictContains(word5);
+#else
     int i;
     for (i = 0; i < WORDLE_ANSWER_COUNT; i++) {
         if (strncmp(word5, kWordleAnswers[i], WORDLE_WORD_LENGTH) == 0) {
@@ -33,6 +41,7 @@ int WordleIsValidWord(const char *word5)
         }
     }
     return 0;
+#endif
 }
 
 static void ResetRow(WordleRow *row)
@@ -47,9 +56,15 @@ static void ResetRow(WordleRow *row)
 void WordleNewGame(WordleGame *game)
 {
     int i;
+#ifdef WORDLE_EXTERNAL_DICTIONARY
+    unsigned long pick = NextRandom() % (unsigned long)WordleDictAnswerCount();
+
+    WordleDictGetAnswer((unsigned short)pick, game->target);
+#else
     unsigned long pick = NextRandom() % (unsigned long)WORDLE_ANSWER_COUNT;
 
     memcpy(game->target, kWordleAnswers[pick], WORDLE_WORD_LENGTH);
+#endif
     game->target[WORDLE_WORD_LENGTH] = '\0';
 
     for (i = 0; i < WORDLE_MAX_GUESSES; i++) {

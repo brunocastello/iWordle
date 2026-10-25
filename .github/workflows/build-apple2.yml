@@ -1,0 +1,84 @@
+name: "Build (Apple II / 6502)"
+
+on:
+  push:
+    paths:
+      - 'src/core/**'
+      - 'src/platform/apple2/**'
+      - 'tools/apple2_pack_words.py'
+      - '.github/workflows/build-apple2.yml'
+  pull_request:
+    paths:
+      - 'src/core/**'
+      - 'src/platform/apple2/**'
+      - 'tools/apple2_pack_words.py'
+      - '.github/workflows/build-apple2.yml'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install cc65
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cc65
+          cl65 --version 2>&1 | head -1
+
+      - name: Pack the dictionary
+        run: |
+          mkdir -p build-apple2
+          python3 -I tools/apple2_pack_words.py src/core/word_list.h build-apple2/WORDS.DAT
+          ls -l build-apple2/WORDS.DAT
+
+      - name: Compile and link
+        run: |
+          CC65_HOME="$(dirname "$(dirname "$(readlink -f "$(command -v cl65)")")")"
+          ls /usr/share/cc65/cfg/ | grep -i apple2 || true
+          cl65 -t apple2 -C apple2-hgr.cfg -Oirs -DWORDLE_EXTERNAL_DICTIONARY \
+            -I src/core -m build-apple2/iwordle.map -o build-apple2/IWORDLE \
+            src/core/wordle_engine.c src/core/wordle_stats.c src/platform/apple2/*.c
+          ls -l build-apple2
+          echo "---- segment list ----"
+          sed -n '/^Segment list/,/^Exports list/p' build-apple2/iwordle.map
+          echo "---- header bytes ----"
+          xxd build-apple2/IWORDLE | head -8
+
+      - name: Download disk tools
+        run: |
+          mkdir -p tools-dl
+          curl -fL -o tools-dl/ProDOS_2_4_3.po https://releases.prodos8.com/ProDOS_2_4_3.po
+          curl -fL -o tools-dl/ac.jar https://github.com/AppleCommander/AppleCommander/releases/download/15.1/AppleCommander-ac-15.1.jar
+          sha256sum tools-dl/ProDOS_2_4_3.po tools-dl/ac.jar
+
+      - name: Build the disk image
+        run: |
+          AC="java -jar tools-dl/ac.jar"
+          PO=build-apple2/iWordle.po
+          SHARE="$(dirname "$(dirname "$(dirname "$(command -v cl65)")")")/share/cc65"
+          [ -d "$SHARE" ] || SHARE=/usr/share/cc65
+          LOADER="$SHARE/target/apple2/util/loader.system"
+          ls -l "$LOADER"
+          rm -f "$PO"
+          $AC -pro140 "$PO" IWORDLE
+          dd if=tools-dl/ProDOS_2_4_3.po of="$PO" bs=512 count=2 conv=notrunc
+          $AC -g tools-dl/ProDOS_2_4_3.po PRODOS > build-apple2/PRODOS
+          $AC -p "$PO" PRODOS SYS 0x0000 < build-apple2/PRODOS
+          $AC -p "$PO" IWORDLE.SYSTEM SYS 0x2000 < "$LOADER"
+          $AC -as "$PO" IWORDLE < build-apple2/IWORDLE
+          $AC -p "$PO" WORDS.DAT BIN 0x0000 < build-apple2/WORDS.DAT
+          $AC -l "$PO"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: iWordle-apple-ii
+          path: |
+            build-apple2/iWordle.po
+            build-apple2/IWORDLE
+            build-apple2/WORDS.DAT
+            build-apple2/iwordle.map
+          if-no-files-found: error

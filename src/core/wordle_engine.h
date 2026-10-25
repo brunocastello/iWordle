@@ -68,4 +68,12 @@ WordleSubmitResult WordleSubmitGuess(WordleGame *game);
  * beyond that) is a recognized dictionary word. */
 int WordleIsValidWord(const char *word5);
 
+#ifdef WORDLE_EXTERNAL_DICTIONARY
+/* Platforms that define WORDLE_EXTERNAL_DICTIONARY supply the word lists
+ * themselves (the engine then does not include word_list.h). */
+unsigned short WordleDictAnswerCount(void);
+void WordleDictGetAnswer(unsigned short index, char *out5);
+int WordleDictContains(const char *word5);  /* answers and guesses */
+#endif
+
 #endif /* WORDLE_ENGINE_H */
