@@ -85,12 +85,12 @@ resource 'MENU' (129, "Edit") {
 /* Main document window                                                   */
 /* ---------------------------------------------------------------------- */
 
-/* Explicit bounds, content 304 wide x 293 tall (278 of layout + the 15px grow-box band): fits 512x342 with the menu
+/* Explicit bounds, content 304 wide x 298 tall (278 of layout + a 20px band: the 15px grow box plus a 5px gap): fits 512x342 with the menu
  * bar (20) and title bar (~19). This is the 100% size: DESIGN_W / DESIGN_H in
  * main.c depend on it. The window is resizable (zoomDocProc: grow box and
  * zoom box) and the board scales with it. */
 resource 'WIND' (128, "iWordle") {
-    { 40, 104, 333, 408 },
+    { 40, 104, 338, 408 },
     zoomDocProc,
     visible,
     goAway,

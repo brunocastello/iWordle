@@ -69,7 +69,7 @@ enum {
 /* Board / keyboard layout                                                */
 /* ---------------------------------------------------------------------- */
 
-/* Window content is 304 x 293 at 100% (WIND 128 in iWordle.r). The widest row (the
+/* Window content is 304 x 298 at 100% (WIND 128 in iWordle.r). The widest row (the
  * bottom row: Enter + 7 letters + Delete) sets the content width and
  * everything else is centered within it. Recompute WIND's bounds in
  * iWordle.r if any of this moves.
@@ -78,10 +78,11 @@ enum {
  * is resizable, and the Get*Rect helpers map design units to window pixels
  * through gScale / gOffsetX / gOffsetY (see UpdateLayout). */
 #define DESIGN_W 304
-#define DESIGN_H 293
+#define DESIGN_H 298
 #define LAYOUT_H 278                /* design-unit bottom of the keyboard */
-#define GROW_BOX_SIZE 15            /* the layout always fits above this band, so the
-                                     * grow box never covers a key at any scale */
+#define GROW_BOX_SIZE 15            /* the grow box in the bottom-right corner */
+#define GROW_BAND (GROW_BOX_SIZE + 5) /* the layout always fits above this band, so
+                                     * the grow box never touches a key at any scale */
 #define MIN_SCALE 600                  /* per mille: content can't go below 60% */
 #define MARGIN 8
 
@@ -255,13 +256,13 @@ static void UpdateLayout(short contentW, short contentH)
     if (contentW <= 0 || contentH <= 0) return;
 
     sx = ((long)contentW * 1000) / DESIGN_W;
-    sy = ((long)(contentH - GROW_BOX_SIZE) * 1000) / LAYOUT_H;
+    sy = ((long)(contentH - GROW_BAND) * 1000) / LAYOUT_H;
     scale = (sx < sy) ? sx : sy;
     if (scale < 1) scale = 1;
     gScale = (short)scale;
 
     gOffsetX = (short)((contentW - ((long)DESIGN_W * gScale) / 1000) / 2);
-    gOffsetY = (short)((contentH - GROW_BOX_SIZE - ((long)LAYOUT_H * gScale) / 1000) / 2);
+    gOffsetY = (short)((contentH - GROW_BAND - ((long)LAYOUT_H * gScale) / 1000) / 2);
 }
 
 static void GetTileRect(short row, short col, Rect *outRect)
@@ -1317,7 +1318,7 @@ static void HandleMouseDown(EventRecord *event)
                  * height leaves room for the menu bar (20) and title bar. */
                 SetRect(&sizeRect,
                         (short)(((long)DESIGN_W * MIN_SCALE) / 1000),
-                        (short)(((long)LAYOUT_H * MIN_SCALE) / 1000 + GROW_BOX_SIZE),
+                        (short)(((long)LAYOUT_H * MIN_SCALE) / 1000 + GROW_BAND),
                         qd.screenBits.bounds.right - qd.screenBits.bounds.left,
                         qd.screenBits.bounds.bottom - qd.screenBits.bounds.top - 20 - 19);
                 newSize = GrowWindow(whichWindow, event->where, &sizeRect);
