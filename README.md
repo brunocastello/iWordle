@@ -133,6 +133,10 @@ containing:
 
 - `iWordle-floppy.img` - a 1.44 MB raw HFS floppy image containing just the
   app. This is the file to hand to an emulator's floppy drive.
+- `iWordle-cd.iso` - a hybrid ISO9660/HFS CD image with an Apple partition
+  map, for emulators whose Mac OS won't mount a bare HFS volume (for example
+  Mac OS 8 in QEMU's `q800`, which offers to initialize `iWordle.dsk`).
+  Insert it in an emulated SCSI CD-ROM drive.
 - `iWordle.dsk` - a raw HFS disk image containing just the app.
 - `iWordle.APPL` - the application with its resource fork, as a folder your
   emulator's host-file-sharing can mount directly.
