@@ -41,12 +41,13 @@ jobs:
           # loader.system, so the program may use everything up to $BF00 (the
           # same trick cc65's docs describe for LOADER.SYSTEM). Our own code goes
           # to LOWCODE ($0803-$1FFF, below the hi-res page); only the runtime
-          # library lands in CODE at $4000.
+          # library lands in CODE at $4000. iobuf.s puts ProDOS's one file buffer on
+          # the unused text page ($0400) instead of the heap.
           cl65 --version 2>&1 | head -1
           cl65 -t apple2 -C apple2-hgr.cfg -Oirs -DWORDLE_EXTERNAL_DICTIONARY \
             --code-name LOWCODE -Wl -D,__HIMEM__=0xBF00 \
             -I src/core -m build-apple2/iwordle.map -o build-apple2/IWORDLE \
-            src/core/wordle_engine.c src/core/wordle_stats.c src/platform/apple2/*.c
+            src/core/wordle_engine.c src/core/wordle_stats.c src/platform/apple2/*.c src/platform/apple2/iobuf.s
           ls -l build-apple2
           echo "---- segment list ----"
           sed -n '/^Segment list/,/^Exports list/p' build-apple2/iwordle.map
