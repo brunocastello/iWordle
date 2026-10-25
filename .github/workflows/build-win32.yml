@@ -1,0 +1,229 @@
+name: "Build (Windows 3.1 Win32s, 95 – ME, NT 3.51 – XP / x86)"
+
+on:
+  push:
+    paths:
+      - 'src/core/**'
+      - 'src/platform/win32/**'
+      - 'src/platform/macos9/icons.r'
+      - 'tools/mac_icon_to_ico.py'
+      - '.github/workflows/build-win32.yml'
+  pull_request:
+    paths:
+      - 'src/core/**'
+      - 'src/platform/win32/**'
+      - 'src/platform/macos9/icons.r'
+      - 'tools/mac_icon_to_ico.py'
+      - '.github/workflows/build-win32.yml'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Open Watcom
+        uses: open-watcom/setup-watcom@v0
+        with:
+          version: "1.9"
+
+      - name: Install packaging tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y mtools genisoimage binutils-mingw-w64-i686 zip
+
+      - name: Show toolchain
+        run: |
+          echo "WATCOM=${WATCOM:-<unset>}"
+          if [ -z "${WATCOM:-}" ]; then
+            echo "::error::setup-watcom did not export WATCOM"
+            exit 1
+          fi
+          command -v wcc386 wlink wrc
+          ls "$WATCOM/h/nt" | head -20
+          ls "$WATCOM/lib386/nt" | head -20
+
+      - name: Build icon and resources
+        run: |
+          set -euo pipefail
+          mkdir -p build-win32
+          python3 -I tools/mac_icon_to_ico.py src/platform/macos9/icons.r build-win32/iWordle.ico
+          cp src/platform/win32/iWordle.manifest build-win32/
+          cd build-win32
+          # Run from build-win32/ so the .ico/.manifest references in the
+          # .rc resolve.
+          wrc -q -r -bt=nt -i=../src/platform/win32 -i="$WATCOM/h" -i="$WATCOM/h/nt" \
+              -fo=iWordle.res ../src/platform/win32/iWordle.rc
+
+      - name: Compile and link
+        run: |
+          set -euo pipefail
+          cd build-win32
+          for f in ../src/core/wordle_engine.c ../src/core/wordle_stats.c ../src/platform/win32/main.c; do
+            wcc386 -q -bt=nt -3r -ox -w3 -ei -i=../src/core -i=../src/platform/win32 \
+                   -i="$WATCOM/h" -i="$WATCOM/h/nt" -fo="$(basename "${f%.c}").obj" "$f"
+          done
+          # Same objects, linked twice; only the subsystem version differs.
+          # IWORDLE.EXE is marked Windows 4.0, so 95/NT 4 and later give it
+          # the 3D look (window edges, 3D controls) and XP+ its themes.
+          # IWORD31.EXE is marked 3.10 because NT 3.51 refuses to load
+          # images marked 4.0; it's the one for Windows 3.1 (Win32s) and
+          # NT 3.51, which draw 3.x-style either way.
+          link() {
+            wlink option quiet system nt_win name "$1" \
+                  file wordle_engine.obj,wordle_stats.obj,main.obj \
+                  libpath "$WATCOM/lib386" libpath "$WATCOM/lib386/nt" \
+                  option resource=iWordle.res \
+                  runtime windows="$2" \
+                  option map="${1%.EXE}.MAP"
+          }
+          link IWORDLE.EXE 4.0
+          link IWORD31.EXE 3.10
+          ls -la
+          # The runtime's __setenvp faults under Win32s; main.c supplies
+          # no-op replacements, which must be the ones that got linked.
+          grep -E '__setenvp_|__freeenvp_' IWORD31.MAP
+          grep -A3 'Module: main.obj' IWORD31.MAP || true
+
+      - name: Check relocations (Win32s)
+        run: |
+          set -euo pipefail
+          cd build-win32
+          # Win32s loads EXEs at whatever shared base is free, so the EXE
+          # must keep its .reloc section (never link with "option norelocs").
+          i686-w64-mingw32-objdump -h IWORD31.EXE | tee sections.txt
+          if ! grep -q '\.reloc' sections.txt; then
+            echo "::error::IWORD31.EXE has no .reloc section; Win32s cannot load it"
+            exit 1
+          fi
+
+      - name: Audit imports (NT 3.51 floor)
+        run: |
+          set -euo pipefail
+          cd build-win32
+          # Both EXEs import the same functions (same code); each must also
+          # carry its own subsystem version. The NT 3.51 / Win32s API floor
+          # applies to both, so one source tree serves every Windows.
+          for pair in IWORDLE.EXE:4.0 IWORD31.EXE:3.10; do
+          exe=${pair%%:*}; want=${pair#*:}
+          echo "=== $exe (expect subsystem $want) ==="
+          i686-w64-mingw32-objdump -p "$exe" > imports.txt
+          python3 -I - imports.txt ../src/platform/win32/allowed-imports.txt "$want" <<'PY'
+          import os
+          import re
+          import sys
+
+          ALLOWED_DLLS = {'KERNEL32.DLL', 'USER32.DLL', 'GDI32.DLL'}
+          # 95/NT4+ or later APIs that don't exist on NT 3.51. Only a trailing
+          # A/W is stripped before comparing, so RegisterClassA doesn't match
+          # RegisterClassEx (the Ex variants are listed by their own name).
+          FORBIDDEN = {
+              'LoadImage', 'DrawEdge', 'DrawFrameControl', 'DrawState',
+              'RegisterClassEx', 'GetSysColorBrush', 'GetMenuItemInfo',
+              'SetMenuItemInfo', 'CheckMenuRadioItem', 'TrackMouseEvent',
+              'SHGetSpecialFolderPath', 'GetFileAttributesEx', 'GradientFill',
+              'AlphaBlend', 'TransparentBlt', 'SetWindowLongPtr',
+              'InitCommonControlsEx',
+          }
+
+          lines = open(sys.argv[1], errors='replace').read().splitlines()
+          imports = []      # (dll, function)
+          dll = None
+          in_tables = False
+          for line in lines:
+              if 'The Import Tables' in line:
+                  in_tables = True
+                  continue
+              if not in_tables:
+                  continue
+              m = re.match(r'\s*DLL Name:\s*(\S+)', line)
+              if m:
+                  dll = m.group(1)
+                  continue
+              # entries look like "    0000a1b4  0123  GetTickCount"; the hint
+              # column is absent for ordinal-only imports.
+              m = re.match(r'\s+[0-9a-fA-F]+\s+[0-9a-fA-F]+\s+(\S+)\s*$', line)
+              if m and dll:
+                  imports.append((dll, m.group(1)))
+
+          problems = []
+          dlls = sorted({d for d, _ in imports}, key=str.lower)
+          print('Imported DLLs:')
+          for d in dlls:
+              print('  ' + d)
+          print('Imported functions:')
+          for d, f in imports:
+              print('  %s!%s' % (d, f))
+
+          if not imports:
+              problems.append('no imports parsed from objdump output')
+          for d in dlls:
+              if d.upper() not in ALLOWED_DLLS:
+                  problems.append('disallowed DLL: ' + d)
+          for d, f in imports:
+              base = re.sub(r'[AW]$', '', f)
+              if f in FORBIDDEN or base in FORBIDDEN:
+                  problems.append('forbidden import: %s!%s' % (d, f))
+
+          allow_path = sys.argv[2]
+          if os.path.exists(allow_path):
+              allowed = set()
+              for raw in open(allow_path):
+                  raw = raw.split('#')[0].strip()
+                  if raw:
+                      d, _, f = raw.partition('!')
+                      allowed.add((d.upper(), f))
+              for d, f in imports:
+                  if (d.upper(), f) not in allowed:
+                      problems.append('import not in allowed-imports.txt: %s!%s' % (d, f))
+          else:
+              print('(no allowed-imports.txt yet; skipping the allowlist check)')
+
+          ver = {}
+          for line in lines:
+              m = re.match(r'\s*(Major|Minor)SubsystemVersion\s+(\S+)', line)
+              if m:
+                  v = m.group(2)
+                  ver[m.group(1)] = int(v, 16) if re.search('[a-fA-F]', v) else int(v)
+                  print(line.strip())
+          want_major, want_minor = (int(x) for x in sys.argv[3].split('.'))
+          if ver.get('Major') != want_major or ver.get('Minor') != want_minor:
+              problems.append('subsystem version is %s.%s, expected %s'
+                              % (ver.get('Major'), ver.get('Minor'), sys.argv[3]))
+
+          if problems:
+              for p in problems:
+                  print('::error::' + p)
+              sys.exit(1)
+          print('Import audit passed.')
+          PY
+          done
+
+      - name: Package (zip, floppy image, ISO)
+        run: |
+          set -euo pipefail
+          mkdir -p package
+          cp build-win32/IWORDLE.EXE build-win32/IWORD31.EXE package/
+          (cd package && zip -9 iWordle-win32.zip IWORDLE.EXE IWORD31.EXE)
+          dd if=/dev/zero of=package/iWordle-floppy.img bs=512 count=2880
+          mformat -i package/iWordle-floppy.img -f 1440 -v IWORDLE ::
+          mcopy -i package/iWordle-floppy.img package/IWORDLE.EXE package/IWORD31.EXE ::
+          mdir -i package/iWordle-floppy.img ::
+          mkdir -p iso && cp package/IWORDLE.EXE package/IWORD31.EXE iso/
+          genisoimage -quiet -J -r -V IWORDLE -o package/iWordle.iso iso
+
+      - name: Upload EXE + disk images
+        uses: actions/upload-artifact@v4
+        with:
+          name: iWordle-windows-x86
+          path: |
+            package/IWORDLE.EXE
+            package/IWORD31.EXE
+            package/iWordle-win32.zip
+            package/iWordle-floppy.img
+            package/iWordle.iso
+            build-win32/IWORDLE.MAP
+            build-win32/IWORD31.MAP
+          if-no-files-found: error

@@ -1,4 +1,4 @@
-name: Build (Mac OS X PowerPC / Carbon)
+name: "Build (Mac OS X 10.4 – 10.14 / PowerPC + Intel 32-bit)"
 
 on:
   push:
@@ -41,7 +41,7 @@ jobs:
               cp build/.rsrc/iWordle.rsrc build/iWordle.rsrc
             '
 
-      - name: Compile and link (powerpc-apple-darwin8 cross-compiler)
+      - name: Compile and link the PowerPC half (powerpc-apple-darwin8 cross-compiler)
         run: |
           set -euo pipefail
           docker run --rm \
@@ -65,7 +65,53 @@ jobs:
 
           $CC -arch ppc -isysroot "$SDK" -mmacosx-version-min=10.4 \
             build/wordle_engine.o build/wordle_stats.o build/main.o \
-            -framework Carbon -framework CoreFoundation -o build/iWordle
+            -framework Carbon -framework CoreFoundation -o build/iWordle-ppc
+          EOF
+
+      - name: Compile and link the Intel half, then lipo (Universal Binary)
+        run: |
+          set -euo pipefail
+          # The SDKs inside the cross-compiler images have their i386 slices
+          # stripped (crt1.o, libSystem and the frameworks are PowerPC-only),
+          # so the Intel half links against a full Universal 10.4u SDK from
+          # phracker/MacOSX-SDKs instead. The image's gcc only targets
+          # PowerPC, but it also ships the host's clang (any Mach-O arch)
+          # and cctools' ld64 (links any arch): compile with clang for
+          # i386-apple-darwin8, link with ld64 directly (clang's darwin
+          # driver would want a compiler-rt that isn't there), then lipo
+          # the two halves together.
+          curl -fsSL -o sdk.tar.xz \
+            https://github.com/phracker/MacOSX-SDKs/releases/download/11.3/MacOSX10.4u.sdk.tar.xz
+          echo "d28276ce6b0f14af30f3bfdc171f8ef4033652da593578568f8be189506c1021  sdk.tar.xz" | sha256sum -c -
+          mkdir -p sdk-full
+          tar -xJf sdk.tar.xz -C sdk-full
+          docker run --rm \
+            -v "${{ github.workspace }}:/root/iWordle" \
+            -w /root/iWordle \
+            -i ghcr.io/variantxyz/gcc-powerpc-apple-darwin8:build-gcc-14.2-MacOSXSDK10.4u /bin/bash <<'EOF'
+          set -euo pipefail
+          SDK=/root/iWordle/sdk-full/MacOSX10.4u.sdk
+          ls "$SDK"
+          LD=$(ls /usr/local/bin/*-ld | head -1)
+          LIPO=$(ls /usr/local/bin/*-lipo | head -1)
+          clang --version | head -1
+          echo "SDK=$SDK LD=$LD LIPO=$LIPO"
+          $LIPO -info "$SDK/usr/lib/crt1.o" "$SDK/usr/lib/libSystem.dylib" || true
+
+          ICFLAGS="-target i386-apple-darwin8 -isysroot $SDK -mmacosx-version-min=10.4 \
+            -fno-stack-protector -Isrc/core -Wall -Wno-pointer-sign \
+            -Wno-deprecated-declarations -O2"
+          clang $ICFLAGS -c src/core/wordle_engine.c -o build/i386-wordle_engine.o
+          clang $ICFLAGS -c src/core/wordle_stats.c -o build/i386-wordle_stats.o
+          clang $ICFLAGS -c src/platform/macosx/main.c -o build/i386-main.o
+          $LD -arch i386 -macosx_version_min 10.4 -syslibroot "$SDK" \
+            -o build/iWordle-i386 "$SDK/usr/lib/crt1.o" \
+            build/i386-wordle_engine.o build/i386-wordle_stats.o build/i386-main.o \
+            -framework Carbon -framework CoreFoundation -lSystem
+          $LIPO -create build/iWordle-ppc build/iWordle-i386 -output build/iWordle
+          $LIPO -info build/iWordle
+          $LIPO -info build/iWordle | grep -q ppc
+          $LIPO -info build/iWordle | grep -q i386
           EOF
 
       - name: Extract Dock/Finder icon (.icns) from icons.r
@@ -100,7 +146,7 @@ jobs:
           cp src/platform/macosx/Info.plist "$APP/Contents/Info.plist"
           cp src/platform/macosx/PkgInfo "$APP/Contents/PkgInfo"
           cd package
-          zip -r -y iWordle-mac-os-x-ppc.zip iWordle.app
+          zip -r -y iWordle-mac-os-x-universal.zip iWordle.app
 
       - name: Build libdmg-hfsplus (open-source, makes a real HFS+ .dmg without a Mac)
         run: |
@@ -166,8 +212,8 @@ jobs:
       - name: Upload app bundle + disk image
         uses: actions/upload-artifact@v4
         with:
-          name: iWordle-mac-os-x-ppc
+          name: iWordle-mac-os-x-universal
           path: |
-            package/iWordle-mac-os-x-ppc.zip
+            package/iWordle-mac-os-x-universal.zip
             package/iWordle.dmg
           if-no-files-found: error

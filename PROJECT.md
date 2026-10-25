@@ -5,9 +5,9 @@
 
 ## 1. Executive Summary & Design Paradigm
 
-This specification describes the as-built architecture for a **native Wordle clone** shipping on both **Mac OS 9** and **Mac OS X 10.0–10.5**, for PowerPC hardware. Both builds implement the classic 6×5 letter grid, color-coded feedback logic, and virtual on-screen keyboard, sharing one portable game-rules engine and diverging only in their platform front end.
+This specification describes the as-built architecture for a **native Wordle clone** shipping on **Mac OS 9**, **Mac OS X 10.0–10.5** (both PowerPC) and **System 7.x** (68k). All three builds implement the classic 6×5 letter grid, color-coded feedback logic, and virtual on-screen keyboard, sharing one portable game-rules engine and diverging only in their platform front end.
 
-Mac OS 9 uses **QuickDraw**, the classic **Event Manager**, and Platinum-styled chrome throughout. Mac OS X uses the same Carbon Toolbox surface but against a real Apple SDK, with genuine Aqua chrome and every UI element built from real native controls — no hand-drawn substitutes anywhere in that build (see `CLAUDE.md` for why that's a hard rule, not a preference).
+Mac OS 9 uses **QuickDraw**, the classic **Event Manager**, and Platinum-styled chrome throughout. Mac OS X uses the same Carbon Toolbox surface but against a real Apple SDK, with genuine Aqua chrome and every UI element built from real native controls — no hand-drawn substitutes anywhere in that build (see `CLAUDE.md` for why that's a hard rule, not a preference). System 7 uses the original, pre-Carbon Toolbox on 68k Macs (tested on a System 7.1 Macintosh SE/30 with a 1-bit 512×342 screen), with the classic Dialog Manager for its dialogs and a monochrome rendering path alongside the color one.
 
 ---
 
@@ -30,7 +30,7 @@ Mac OS 9 uses **QuickDraw**, the classic **Event Manager**, and Platinum-styled 
 └─────────────────────────────────────────────────────────┘
 ```
 
-`src/core/` holds the entire game engine — board state, guess evaluation, dictionary, RNG, per-player statistics — as portable C99 with zero Mac Toolbox/Carbon dependencies. `src/platform/macos9/` and `src/platform/macosx/` each implement the SAME UI (window/menu setup, event loop, tile/keyboard rendering, About/message/Ranking/name-prompt windows) against their own toolchain and SDK, calling into `src/core/` for every rule of the game itself. Neither front end embeds any game logic of its own.
+`src/core/` holds the entire game engine — board state, guess evaluation, dictionary, RNG, per-player statistics — as portable C99 with zero Mac Toolbox/Carbon dependencies. `src/platform/macos9/`, `src/platform/macosx/` and `src/platform/system7/` each implement the SAME UI (window/menu setup, event loop, tile/keyboard rendering, About/message/Ranking/name-prompt windows) against their own toolchain and SDK, calling into `src/core/` for every rule of the game itself. Neither front end embeds any game logic of its own.
 
 > **Core Subsystems**
 > * **QuickDraw Grid Renderer:** draws the 6×5 matrix with `PaintRect`/`FrameRect`, filling tile backgrounds with the project's `RGBColor` palette for correct (green), present (yellow), and absent (gray) letters.
@@ -55,25 +55,25 @@ Guesses are checked against an in-memory word list compiled into `src/core/`; no
 Every result (name, win/loss, streak) is recorded to a small on-disk stats file and shown in the Ranking window (File > Ranking, ⌘R), which also opens automatically right after a result is saved. Statistics persist across launches and can be cleared from the Ranking window.
 
 ### E. About window
-Both platforms ship a standard About window matching their era's convention (a real title bar with a close box, no OK button — SimpleText's About Box on Mac OS 9, the equivalent native pattern on Mac OS X) showing the app icon, name/version, author, and credits.
+All platforms ship a standard About window matching their era's convention (a real title bar with a close box, no OK button — SimpleText's About Box on Mac OS 9, TeachText-era About windows on System 7, the equivalent native pattern on Mac OS X) showing the app icon, name/version, author, and credits.
 
 ---
 
 ## 4. Technical Stack & API Mapping
 
-| Component | Mac OS 9 | Mac OS X |
-| :--- | :--- | :--- |
-| **Toolchain** | Retro68 (Carbon PowerPC target) | `powerpc-apple-darwin8-gcc` + Apple's real `MacOSX10.4u.sdk` |
-| **Executable format** | PEF/CFM (`APPL`) | Mach-O `.app` bundle |
-| **Graphics & Rendering** | QuickDraw (`RGBForeColor`, `PaintRect`, `DrawString`) | Same QuickDraw calls for game-board tiles; every dialog/window built from real Carbon controls instead |
-| **Event Handling** | Mac OS Event Manager (`WaitNextEvent`, `keyDownEvt`) | Same |
-| **UI Controls & Dialogs** | Dialog Manager (`DLOG`/`DITL`) for message box/stats; plain `WIND` + Control Manager for the name prompt | Plain `WIND` + Control Manager throughout — no `DLOG`/`DITL` anywhere in this build |
-| **Storage** | `FSSpec`-based File Manager I/O for the stats file | Same File Manager API, same on-disk format |
-| **Distribution** | `.sit` (StuffIt) and `.dsk` (raw HFS disk image) | `.dmg` and a zipped `.app` bundle, built with `libdmg-hfsplus` (no real Mac needed) |
-| **CI** | `.github/workflows/build.yml`, `ghcr.io/autc04/retro68` Docker image | `.github/workflows/build-macosx.yml`, Retro68 borrowed only for its `Rez` tool |
+| Component | Mac OS 9 | Mac OS X | System 7 |
+| :--- | :--- | :--- | :--- |
+| **Toolchain** | Retro68 (Carbon PowerPC target) | `powerpc-apple-darwin8-gcc` + Apple's real `MacOSX10.4u.sdk` | Retro68 (classic m68k target) |
+| **Executable format** | PEF/CFM (`APPL`) | Mach-O `.app` bundle | 68k `CODE` resources (`APPL`) |
+| **Graphics & Rendering** | QuickDraw (`RGBForeColor`, `PaintRect`, `DrawString`) | Same QuickDraw calls for game-board tiles; every dialog/window built from real Carbon controls instead | Classic QuickDraw; color palette on color displays, 1-bit black/white/gray patterns on monochrome ones (`RGBForeColor` vs. `PaintRect`/`FillRect` with `qd.gray`) |
+| **Event Handling** | Mac OS Event Manager (`WaitNextEvent`, `keyDownEvt`) | Same | Same |
+| **UI Controls & Dialogs** | Dialog Manager (`DLOG`/`DITL`) for message box/stats; plain `WIND` + Control Manager for the name prompt | Plain `WIND` + Control Manager throughout — no `DLOG`/`DITL` anywhere in this build | Dialog Manager (`DLOG`/`DITL`/`ALRT`, `ModalDialog`) throughout, with a plain `WIND` for About |
+| **Storage** | `FSSpec`-based File Manager I/O for the stats file | Same File Manager API, same on-disk format | Same format, stored in the Preferences folder (`FindFolder`) |
+| **Distribution** | `.sit` (StuffIt) and `.dsk` (raw HFS disk image) | `.dmg` and a zipped `.app` bundle, built with `libdmg-hfsplus` (no real Mac needed) | 1.44 MB HFS floppy image (built with `hfsutils`), plus `.dsk`, `.bin` and `.APPL` |
+| **CI** | `.github/workflows/build.yml`, `ghcr.io/autc04/retro68` Docker image | `.github/workflows/build-macosx.yml`, Retro68 borrowed only for its `Rez` tool | `.github/workflows/build-system7.yml`, `ghcr.io/autc04/retro68` Docker image (m68k toolchain) |
 
 ---
 
 ## 5. Status
 
-Both builds are feature-complete and released — see the repo's [Releases](../../releases) page for downloads. Ongoing/future work, if any, should be tracked as issues rather than in this document.
+The Mac OS 9 and Mac OS X builds are feature-complete and released — see the repo's [Releases](../../releases) page for downloads. The System 7 build is in progress (CI-built, tested on a MAME SE/30). Ongoing/future work, if any, should be tracked as issues rather than in this document.

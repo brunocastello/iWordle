@@ -1,0 +1,95 @@
+name: "Build (System 7.0 – Mac OS 8.1 / 68k)"
+
+on:
+  push:
+    paths:
+      - 'src/core/**'
+      - 'src/platform/system7/**'
+      - 'src/platform/macos9/icons.r'
+      - 'CMakeLists.txt'
+      - 'third_party/InterfacesAndLibraries/**'
+      - '.github/workflows/build-system7.yml'
+  pull_request:
+    paths:
+      - 'src/core/**'
+      - 'src/platform/system7/**'
+      - 'src/platform/macos9/icons.r'
+      - 'CMakeLists.txt'
+      - 'third_party/InterfacesAndLibraries/**'
+      - '.github/workflows/build-system7.yml'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build with Retro68 (classic 68k toolchain)
+        run: |
+          docker run --rm \
+            -v "${{ github.workspace }}:/root/iWordle" \
+            -w /root/iWordle \
+            -i ghcr.io/autc04/retro68 /bin/bash <<'EOF'
+          set -euo pipefail
+          /Retro68-build/bin/interfaces-and-libraries.sh /Retro68-build/toolchain /root/iWordle/third_party/InterfacesAndLibraries
+          mkdir -p build-68k
+          cd build-68k
+          cmake .. -DCMAKE_TOOLCHAIN_FILE=/Retro68-build/toolchain/m68k-apple-macos/cmake/retro68.toolchain.cmake
+          cmake --build . --verbose
+          ls -la
+          EOF
+
+      - name: Package 1.44 MB floppy image (HFS)
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y hfsutils
+
+          # build-68k/ is owned by root (created inside the Retro68
+          # container), so this host-side step can read from it but not
+          # write into it -- everything created here goes to package/.
+          mkdir -p package
+
+          # Raw HFS floppy for MAME's SE/30 SuperDrive. hcopy -m copies
+          # the MacBinary file so both forks and the type/creator land on
+          # the volume.
+          dd if=/dev/zero of=package/iWordle-floppy.img bs=512 count=2880
+          hformat -l iWordle package/iWordle-floppy.img
+          hmount package/iWordle-floppy.img
+          hcopy -m build-68k/iWordle.bin :iWordle
+          hls -l
+          humount
+
+      - name: Package Mac CD image (hybrid ISO9660/HFS with partition map)
+        run: |
+          set -euo pipefail
+          sudo apt-get install -y genisoimage
+
+          # A bare HFS volume (iWordle.dsk) has no Apple partition map, so
+          # Mac OS 8's CD-ROM driver offers to initialize it instead of
+          # mounting it (seen in QEMU's q800). -part writes the partition
+          # map old Mac CD drivers need, and --macbin decodes the MacBinary
+          # file back into an HFS file with both forks and type/creator.
+          mkdir -p cdroot
+          cp build-68k/iWordle.bin cdroot/iWordle.bin
+          genisoimage -hfs -part --macbin -r -J \
+                      -V iWordle -hfs-volid iWordle \
+                      -o package/iWordle-cd.iso cdroot
+          ls -la package
+
+      - name: Upload floppy image + app
+        uses: actions/upload-artifact@v4
+        with:
+          name: iWordle-system-7-68k
+          path: |
+            package/iWordle-floppy.img
+            package/iWordle-cd.iso
+            build-68k/iWordle.bin
+            build-68k/iWordle.dsk
+            build-68k/iWordle.APPL
+          if-no-files-found: error
+          # iWordle.APPL keeps its resource fork in hidden .rsrc/.finf
+          # subfolders, which upload-artifact skips by default.
+          include-hidden-files: true

@@ -77,9 +77,13 @@ resource 'MENU' (128, "File") {
 /* Main document window                                                   */
 /* ---------------------------------------------------------------------- */
 
+/* 568 tall = 544 (keyboard bottom) + 24, clearing the 15px grow box.
+ * zoomDocProc: resizable with a zoom box. These bounds are the 100%
+ * size (DESIGN_W x DESIGN_H in main.c); the layout scales with the
+ * window, down to 60%. */
 resource 'WIND' (128, "iWordle") {
-    { 0, 0, 558, 502 },
-    documentProc,
+    { 0, 0, 568, 502 },
+    zoomDocProc,
     visible,
     goAway,
     0,

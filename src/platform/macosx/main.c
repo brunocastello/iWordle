@@ -50,9 +50,22 @@ enum {
 #define KEYBOARD_TOP      398
 #define KB_ROW0_LEFT      MARGIN
 #define KB_ROW1_LEFT      38
-#define KB_ROW2_LEFT      33
-#define KB_BACKSPACE_WIDTH 100
+#define KB_ROW2_LEFT      86          /* letters, after the ENTER key */
+#define KB_WIDE_KEY_WIDTH 66          /* ENTER + gap + 7 keys + gap + BACK = 474 */
 #define KB_ROW_COUNT      3
+
+/* The constants above are "design units": the layout at 100%. The main
+ * window can be resized/zoomed, and every layout helper below returns its
+ * rect already scaled by gScale (per mille) and centered by
+ * gOffsetX/gOffsetY. DESIGN_W/DESIGN_H are the content size of WIND 128
+ * in iWordle.r; the content can't shrink below MIN_SCALE of it. */
+#define DESIGN_W   502
+#define DESIGN_H   568
+#define LAYOUT_H 544                /* design-unit bottom of the keyboard */
+#define GROW_BOX_SIZE 15            /* the grow box in the bottom-right corner */
+#define GROW_BAND (GROW_BOX_SIZE + 5) /* the layout always fits above this band, so
+                                     * the grow box never touches a key at any scale */
+#define MIN_SCALE  600
 
 static const char * const kKBRows[KB_ROW_COUNT] = {
     "QWERTYUIOP",
@@ -81,6 +94,8 @@ static const RGBColor kColorBevelLo  = { C16(0x99), C16(0x99), C16(0x99) };
 /* ---------------------------------------------------------------------- */
 
 static WindowPtr gWindow;
+static short gScale = 1000;
+static short gOffsetX = 0, gOffsetY = 0;
 static WordleGame gGame;
 static Boolean gDone = false;
 static WordleStatsBook gStats;
@@ -100,9 +115,15 @@ static Boolean PromptForPlayerName(Str255 outName);
 static void RecordGameResult(Boolean won);
 static void OnStatistics(void);
 
+static short ScaleLength(short v);
+static short ScaleFont(short size);
+static void ScaleRect(Rect *r);
+static void UpdateLayout(short contentW, short contentH);
+static void OnWindowResized(void);
 static void GetTileRect(short row, short col, Rect *outRect);
 static void GetLetterKeyRect(short row, short idx, Rect *outRect);
 static void GetBackspaceKeyRect(Rect *outRect);
+static void GetEnterKeyRect(Rect *outRect);
 
 static void DrawBevelRect(const Rect *r, RGBColor fill);
 static void DrawCenteredLetter(const Rect *r, char letter, short fontSize, const RGBColor *color);
@@ -110,6 +131,7 @@ static ControlRef AddLabel(WindowRef win, short left, short right, short top, sh
                             ThemeFontID themeFont, short just, ConstStr255Param s);
 static void DrawTile(short row, short col);
 static void DrawKey(const Rect *r, char letter);
+static void DrawWideKey(const Rect *r, const char *label);
 static void DrawBoard(void);
 static void DrawKeyboard(void);
 static void EraseBackground(WindowPtr w);
@@ -143,11 +165,58 @@ static void RunEventLoop(void);
 /* Layout helpers                                                          */
 /* ---------------------------------------------------------------------- */
 
+static short ScaleLength(short v)
+{
+    return (short)(((long)v * gScale) / 1000);
+}
+
+/* Main-window text size at the current scale, never below 7pt. */
+static short ScaleFont(short size)
+{
+    short v = ScaleLength(size);
+    return v < 7 ? 7 : v;
+}
+
+static void ScaleRect(Rect *r)
+{
+    r->left = gOffsetX + ScaleLength(r->left);
+    r->top = gOffsetY + ScaleLength(r->top);
+    r->right = gOffsetX + ScaleLength(r->right);
+    r->bottom = gOffsetY + ScaleLength(r->bottom);
+}
+
+/* Fits the design layout into the content area (aspect ratio kept) and
+ * centers it. */
+static void UpdateLayout(short contentW, short contentH)
+{
+    long sx = (long)contentW * 1000 / DESIGN_W;
+    long sy = (long)(contentH - GROW_BAND) * 1000 / LAYOUT_H;
+    long scale = sx < sy ? sx : sy;
+
+    if (scale < 1) scale = 1;
+    gScale = (short)scale;
+    gOffsetX = (short)((contentW - (long)DESIGN_W * gScale / 1000) / 2);
+    gOffsetY = (short)((contentH - GROW_BAND - (long)LAYOUT_H * gScale / 1000) / 2);
+}
+
+/* The board moves when the window changes size, so repaint everything. */
+static void OnWindowResized(void)
+{
+    Rect r;
+
+    GetPortBounds(GetWindowPort(gWindow), &r);
+    UpdateLayout((short)(r.right - r.left), (short)(r.bottom - r.top));
+    SetPortWindowPort(gWindow);
+    EraseRect(&r);
+    InvalWindowRect(gWindow, &r);
+}
+
 static void GetTileRect(short row, short col, Rect *outRect)
 {
     short top = BOARD_TOP + row * (TILE_SIZE + TILE_GAP);
     short left = BOARD_LEFT + col * (TILE_SIZE + TILE_GAP);
     SetRect(outRect, left, top, left + TILE_SIZE, top + TILE_SIZE);
+    ScaleRect(outRect);
 }
 
 static short KeyboardRowLeft(short row)
@@ -164,13 +233,25 @@ static void GetLetterKeyRect(short row, short idx, Rect *outRect)
     short top = KEYBOARD_TOP + row * (KEY_SIZE + KEY_ROW_GAP);
     short left = KeyboardRowLeft(row) + idx * (KEY_SIZE + KEY_GAP);
     SetRect(outRect, left, top, left + KEY_SIZE, top + KEY_SIZE);
+    ScaleRect(outRect);
 }
 
 static void GetBackspaceKeyRect(Rect *outRect)
 {
     short top = KEYBOARD_TOP + 2 * (KEY_SIZE + KEY_ROW_GAP);
     short left = KB_ROW2_LEFT + 7 * (KEY_SIZE + KEY_GAP);
-    SetRect(outRect, left, top, left + KB_BACKSPACE_WIDTH, top + KEY_SIZE);
+    SetRect(outRect, left, top, left + KB_WIDE_KEY_WIDTH, top + KEY_SIZE);
+    ScaleRect(outRect);
+}
+
+/* ENTER sits left of Z, mirroring BACK on the right (as in Wordle), so
+ * mouse-only players can submit without the Return key. */
+static void GetEnterKeyRect(Rect *outRect)
+{
+    short top = KEYBOARD_TOP + 2 * (KEY_SIZE + KEY_ROW_GAP);
+    short left = KB_ROW2_LEFT - KEY_GAP - KB_WIDE_KEY_WIDTH;
+    SetRect(outRect, left, top, left + KB_WIDE_KEY_WIDTH, top + KEY_SIZE);
+    ScaleRect(outRect);
 }
 
 /* ---------------------------------------------------------------------- */
@@ -299,7 +380,7 @@ static void DrawTile(short row, short col)
     SetForeColor(kColorBorder);
     FrameRect(&r);
 
-    DrawCenteredLetter(&r, letter, 28, &textColor);
+    DrawCenteredLetter(&r, letter, ScaleFont(28), &textColor);
     SetForeColor(kColorBlack);
 }
 
@@ -317,7 +398,27 @@ static void DrawKey(const Rect *r, char letter)
     }
 
     DrawBevelRect(r, fill);
-    DrawCenteredLetter(r, letter, 16, &textColor);
+    DrawCenteredLetter(r, letter, ScaleFont(16), &textColor);
+    SetForeColor(kColorBlack);
+}
+
+/* label is a C string: this toolchain has no -fpascal-strings. */
+static void DrawWideKey(const Rect *r, const char *label)
+{
+    Str255 s;
+    short w;
+    short size = ScaleFont(14);
+
+    CStrToPStr(s, label);
+    DrawBevelRect(r, kColorKeyFace);
+    /* Same native font family as the tiles above/other dialogs. */
+    UseThemeFont(kThemeSystemFont, smSystemScript);
+    TextSize(size);
+    TextFace(bold);
+    SetForeColor(kColorBorder);
+    w = StringWidth(s);
+    MoveTo(r->left + ((r->right - r->left) - w) / 2, r->top + (r->bottom - r->top) / 2 + size * 5 / 14);
+    DrawString(s);
     SetForeColor(kColorBlack);
 }
 
@@ -344,26 +445,10 @@ static void DrawKeyboard(void)
         }
     }
 
+    GetEnterKeyRect(&r);
+    DrawWideKey(&r, "ENTER");
     GetBackspaceKeyRect(&r);
-    DrawBevelRect(&r, kColorKeyFace);
-    {
-        Str255 s;
-        short w;
-        s[0] = 4;
-        s[1] = 'B';
-        s[2] = 'A';
-        s[3] = 'C';
-        s[4] = 'K';
-        /* Same native font family as the tiles above/other dialogs. */
-        UseThemeFont(kThemeSystemFont, smSystemScript);
-        TextSize(14);
-        TextFace(bold);
-        SetForeColor(kColorBorder);
-        w = StringWidth(s);
-        MoveTo(r.left + ((r.right - r.left) - w) / 2, r.top + (r.bottom - r.top) / 2 + 5);
-        DrawString(s);
-    }
-    SetForeColor(kColorBlack);
+    DrawWideKey(&r, "BACK");
 }
 
 static void EraseBackground(WindowPtr w)
@@ -770,7 +855,7 @@ static void OnAbout(void)
      * name/credit lines, matching TextEdit's own About window.
      * kThemeSmallSystemFont -- documented as "slightly smaller...
      * compared to kThemeSystemFont" -- one size down for the rest. */
-    CStrToPStr(s, "iWordle 1.0");
+    CStrToPStr(s, "iWordle 1.1");
     AddLabel(win, windowRect.left, windowRect.right, 54, 20, kThemeAlertHeaderFont, teCenter, s);
 
     CStrToPStr(s, "A native Wordle clone for Mac OS X");
@@ -1300,6 +1385,12 @@ static void HandleContentClick(Point local)
     GetBackspaceKeyRect(&r);
     if (PtInRect(local, &r)) {
         OnBackspace();
+        return;
+    }
+
+    GetEnterKeyRect(&r);
+    if (PtInRect(local, &r)) {
+        OnSubmit();
     }
 }
 
@@ -1369,6 +1460,30 @@ static void HandleMouseDown(EventRecord *event)
 
         case inGoAway:
             if (TrackGoAway(whichWindow, event->where)) gDone = true;
+            break;
+
+        case inGrow: {
+            BitMap screenBits;
+            Rect limits;
+            GetQDGlobalsScreenBits(&screenBits);
+            SetRect(&limits, (short)((long)DESIGN_W * MIN_SCALE / 1000),
+                    (short)((long)LAYOUT_H * MIN_SCALE / 1000 + GROW_BAND),
+                    screenBits.bounds.right - screenBits.bounds.left,
+                    screenBits.bounds.bottom - screenBits.bounds.top);
+            if (ResizeWindow(whichWindow, event->where, &limits, NULL)) OnWindowResized();
+            break;
+        }
+
+        case inZoomIn:
+        case inZoomOut:
+            if (TrackBox(whichWindow, event->where, part)) {
+                Rect r;
+                SetPortWindowPort(whichWindow);
+                GetPortBounds(GetWindowPort(whichWindow), &r);
+                EraseRect(&r);
+                ZoomWindow(whichWindow, part, false);
+                OnWindowResized();
+            }
             break;
 
         case inContent:
@@ -1539,10 +1654,7 @@ int main(void)
     DrawMenuBar();
 
     gWindow = GetNewCWindow(128, NULL, (WindowPtr)-1);
-    /* The board/keyboard layout is a fixed size (see MARGIN etc. at the
-     * top of this file) -- no reason to offer a resize grip that would
-     * just distort or clip it. */
-    ChangeWindowAttributes(gWindow, 0, kWindowResizableAttribute);
+    UpdateLayout(DESIGN_W, DESIGN_H);
     ShowWindow(gWindow);
 
     LoadStats();

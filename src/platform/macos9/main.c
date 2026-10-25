@@ -52,10 +52,23 @@ enum {
 /* ---------------------------------------------------------------------- */
 
 /* Window content is sized to fit this layout with a MARGIN-wide border
- * on every side and nothing more; the widest row (10-key QWERTY row)
+ * on every side (plus 10px extra at the bottom, so the keyboard clears
+ * the zoomDocProc grow box); the widest row (10-key QWERTY row)
  * sets the overall content width, and everything else is centered
- * within it. Recompute WIND's bounds in iWordle.r if any of this moves. */
+ * within it. Recompute WIND's bounds in iWordle.r if any of this moves.
+ *
+ * All of the constants below are "design units": the layout at 100%.
+ * The main window is resizable, so the layout helpers scale their
+ * results by gScale (see UpdateLayout) and center them in the content. */
 #define MARGIN 14
+
+#define DESIGN_W 502                /* WIND 128 content size at 100% */
+#define DESIGN_H 568
+#define LAYOUT_H 544                /* design-unit bottom of the keyboard */
+#define GROW_BOX_SIZE 15            /* the grow box in the bottom-right corner */
+#define GROW_BAND (GROW_BOX_SIZE + 5) /* the layout always fits above this band, so
+                                     * the grow box never touches a key at any scale */
+#define MIN_SCALE 600               /* smallest window: 60% */
 
 #define TILE_SIZE      54
 #define TILE_GAP       8
@@ -68,8 +81,8 @@ enum {
 #define KEYBOARD_TOP      398
 #define KB_ROW0_LEFT      MARGIN
 #define KB_ROW1_LEFT      38
-#define KB_ROW2_LEFT      33
-#define KB_BACKSPACE_WIDTH 100
+#define KB_ROW2_LEFT      86          /* letters, after the ENTER key */
+#define KB_WIDE_KEY_WIDTH 66          /* ENTER + gap + 7 keys + gap + BACK = 474 */
 #define KB_ROW_COUNT      3
 
 static const char * const kKBRows[KB_ROW_COUNT] = {
@@ -106,6 +119,13 @@ static Str255 gLastPlayerName = { 0 };
 static ControlHandle gNameFieldControl = NULL;
 static ControlHandle gNameOKControl = NULL;
 
+/* Layout scale in per mille (1000 = 100%, aspect ratio kept) and the
+ * offset that centers the scaled layout in the content area; set by
+ * UpdateLayout on every resize. */
+static short gScale = 1000;
+static short gOffsetX = 0;
+static short gOffsetY = 0;
+
 /* ---------------------------------------------------------------------- */
 /* Forward declarations                                                   */
 /* ---------------------------------------------------------------------- */
@@ -128,15 +148,23 @@ static Boolean PromptForPlayerName(Str255 outName);
 static void RecordGameResult(Boolean won);
 static void OnStatistics(void);
 
+static short ScaleLength(short v);
+static void ScaleRect(Rect *r);
+static void UpdateLayout(short contentW, short contentH);
+static short ScaledTextSize(short n);
+static void OnWindowResized(void);
+
 static void GetTileRect(short row, short col, Rect *outRect);
 static void GetLetterKeyRect(short row, short idx, Rect *outRect);
 static void GetBackspaceKeyRect(Rect *outRect);
+static void GetEnterKeyRect(Rect *outRect);
 
 static void DrawBevelRect(const Rect *r, RGBColor fill);
 static void DrawCenteredLetter(const Rect *r, char letter, short fontSize, const RGBColor *color);
 static void DrawCenteredStringAt(short centerX, short baselineY, ConstStr255Param s);
 static void DrawTile(short row, short col);
 static void DrawKey(const Rect *r, char letter);
+static void DrawWideKey(const Rect *r, ConstStr255Param s);
 static void DrawBoard(void);
 static void DrawKeyboard(void);
 static void EraseBackground(WindowPtr w);
@@ -170,11 +198,45 @@ static void RunEventLoop(void);
 /* Layout helpers                                                          */
 /* ---------------------------------------------------------------------- */
 
+static short ScaleLength(short v)
+{
+    return (short)(((long)v * gScale) / 1000);
+}
+
+/* Maps each edge independently, so neighbouring rects stay flush. */
+static void ScaleRect(Rect *r)
+{
+    r->left = gOffsetX + ScaleLength(r->left);
+    r->top = gOffsetY + ScaleLength(r->top);
+    r->right = gOffsetX + ScaleLength(r->right);
+    r->bottom = gOffsetY + ScaleLength(r->bottom);
+}
+
+static void UpdateLayout(short contentW, short contentH)
+{
+    long sx = (long)contentW * 1000 / DESIGN_W;
+    long sy = (long)(contentH - GROW_BAND) * 1000 / LAYOUT_H;
+    long scale = (sx < sy) ? sx : sy;
+
+    if (scale < 1) scale = 1;
+    gScale = (short)scale;
+    gOffsetX = (short)((contentW - (long)DESIGN_W * gScale / 1000) / 2);
+    gOffsetY = (short)((contentH - GROW_BAND - (long)LAYOUT_H * gScale / 1000) / 2);
+}
+
+/* Main-window text size at the current scale, never below 7pt. */
+static short ScaledTextSize(short n)
+{
+    short size = ScaleLength(n);
+    return (size < 7) ? 7 : size;
+}
+
 static void GetTileRect(short row, short col, Rect *outRect)
 {
     short top = BOARD_TOP + row * (TILE_SIZE + TILE_GAP);
     short left = BOARD_LEFT + col * (TILE_SIZE + TILE_GAP);
     SetRect(outRect, left, top, left + TILE_SIZE, top + TILE_SIZE);
+    ScaleRect(outRect);
 }
 
 static short KeyboardRowLeft(short row)
@@ -191,13 +253,25 @@ static void GetLetterKeyRect(short row, short idx, Rect *outRect)
     short top = KEYBOARD_TOP + row * (KEY_SIZE + KEY_ROW_GAP);
     short left = KeyboardRowLeft(row) + idx * (KEY_SIZE + KEY_GAP);
     SetRect(outRect, left, top, left + KEY_SIZE, top + KEY_SIZE);
+    ScaleRect(outRect);
 }
 
 static void GetBackspaceKeyRect(Rect *outRect)
 {
     short top = KEYBOARD_TOP + 2 * (KEY_SIZE + KEY_ROW_GAP);
     short left = KB_ROW2_LEFT + 7 * (KEY_SIZE + KEY_GAP);
-    SetRect(outRect, left, top, left + KB_BACKSPACE_WIDTH, top + KEY_SIZE);
+    SetRect(outRect, left, top, left + KB_WIDE_KEY_WIDTH, top + KEY_SIZE);
+    ScaleRect(outRect);
+}
+
+/* ENTER sits left of Z, mirroring BACK on the right (as in Wordle), so
+ * mouse-only players can submit without the Return key. */
+static void GetEnterKeyRect(Rect *outRect)
+{
+    short top = KEYBOARD_TOP + 2 * (KEY_SIZE + KEY_ROW_GAP);
+    short left = KB_ROW2_LEFT - KEY_GAP - KB_WIDE_KEY_WIDTH;
+    SetRect(outRect, left, top, left + KB_WIDE_KEY_WIDTH, top + KEY_SIZE);
+    ScaleRect(outRect);
 }
 
 /* ---------------------------------------------------------------------- */
@@ -292,7 +366,7 @@ static void DrawTile(short row, short col)
     SetForeColor(kColorBorder);
     FrameRect(&r);
 
-    DrawCenteredLetter(&r, letter, 28, &textColor);
+    DrawCenteredLetter(&r, letter, ScaledTextSize(28), &textColor);
     SetForeColor(kColorBlack);
 }
 
@@ -310,7 +384,23 @@ static void DrawKey(const Rect *r, char letter)
     }
 
     DrawBevelRect(r, fill);
-    DrawCenteredLetter(r, letter, 16, &textColor);
+    DrawCenteredLetter(r, letter, ScaledTextSize(16), &textColor);
+    SetForeColor(kColorBlack);
+}
+
+static void DrawWideKey(const Rect *r, ConstStr255Param s)
+{
+    short w;
+
+    DrawBevelRect(r, kColorKeyFace);
+    TextFont(kFontGeneva);
+    TextSize(ScaledTextSize(14));
+    TextFace(bold);
+    SetForeColor(kColorBorder);
+    w = StringWidth(s);
+    MoveTo(r->left + ((r->right - r->left) - w) / 2,
+           r->top + (r->bottom - r->top) / 2 + ScaleLength(5));
+    DrawString(s);
     SetForeColor(kColorBlack);
 }
 
@@ -337,25 +427,10 @@ static void DrawKeyboard(void)
         }
     }
 
+    GetEnterKeyRect(&r);
+    DrawWideKey(&r, "\pENTER");
     GetBackspaceKeyRect(&r);
-    DrawBevelRect(&r, kColorKeyFace);
-    {
-        Str255 s;
-        short w;
-        s[0] = 4;
-        s[1] = 'B';
-        s[2] = 'A';
-        s[3] = 'C';
-        s[4] = 'K';
-        TextFont(kFontGeneva);
-        TextSize(14);
-        TextFace(bold);
-        SetForeColor(kColorBorder);
-        w = StringWidth(s);
-        MoveTo(r.left + ((r.right - r.left) - w) / 2, r.top + (r.bottom - r.top) / 2 + 5);
-        DrawString(s);
-    }
-    SetForeColor(kColorBlack);
+    DrawWideKey(&r, "\pBACK");
 }
 
 static void EraseBackground(WindowPtr w)
@@ -364,6 +439,20 @@ static void EraseBackground(WindowPtr w)
     GetPortBounds(GetWindowPort(w), &r);
     SetForeColor(kColorWindowBG);
     PaintRect(&r);
+}
+
+/* Called after the main window changes size (grow or zoom): re-derive
+ * the layout from the new content size, then repaint everything -- the
+ * board moves, so no partial update. */
+static void OnWindowResized(void)
+{
+    Rect r;
+
+    SetPortWindowPort(gWindow);
+    GetPortBounds(GetWindowPort(gWindow), &r);
+    UpdateLayout(r.right - r.left, r.bottom - r.top);
+    EraseRect(&r);
+    InvalWindowRect(gWindow, &r);
 }
 
 static void RedrawAll(void)
@@ -730,7 +819,7 @@ static void DrawAboutWindowContent(WindowPtr w)
 
         TextFont(charcoalID);
         TextSize(12);
-        CStrToPStr(s, "iWordle 1.0");
+        CStrToPStr(s, "iWordle 1.1");
         DrawCenteredStringAt(midX, box.top + 64, s);
 
         TextFont(kFontGeneva);
@@ -1240,6 +1329,12 @@ static void HandleContentClick(Point local)
     GetBackspaceKeyRect(&r);
     if (PtInRect(local, &r)) {
         OnBackspace();
+        return;
+    }
+
+    GetEnterKeyRect(&r);
+    if (PtInRect(local, &r)) {
+        OnSubmit();
     }
 }
 
@@ -1309,6 +1404,37 @@ static void HandleMouseDown(EventRecord *event)
 
         case inGoAway:
             if (TrackGoAway(whichWindow, event->where)) gDone = true;
+            break;
+
+        case inGrow: {
+            /* limits: top/left = minimum content height/width,
+             * bottom/right = maximum, i.e. the main screen. */
+            BitMap screenBits;
+            Rect limits;
+            GetQDGlobalsScreenBits(&screenBits);
+            SetRect(&limits,
+                    (short)((long)DESIGN_W * MIN_SCALE / 1000),
+                    (short)((long)LAYOUT_H * MIN_SCALE / 1000 + GROW_BAND),
+                    screenBits.bounds.right - screenBits.bounds.left,
+                    screenBits.bounds.bottom - screenBits.bounds.top - 20);
+            if (whichWindow == gWindow &&
+                ResizeWindow(whichWindow, event->where, &limits, NULL)) {
+                OnWindowResized();
+            }
+            break;
+        }
+
+        case inZoomIn:
+        case inZoomOut:
+            if (whichWindow == gWindow &&
+                TrackBox(whichWindow, event->where, part)) {
+                Rect r;
+                SetPortWindowPort(whichWindow);
+                GetPortBounds(GetWindowPort(whichWindow), &r);
+                EraseRect(&r);
+                ZoomWindow(whichWindow, part, false);
+                OnWindowResized();
+            }
             break;
 
         case inContent:
@@ -1447,6 +1573,7 @@ int main(void)
     DrawMenuBar();
 
     gWindow = GetNewCWindow(128, NULL, (WindowPtr)-1);
+    UpdateLayout(DESIGN_W, DESIGN_H);
     ShowWindow(gWindow);
 
     LoadStats();

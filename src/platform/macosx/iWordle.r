@@ -62,18 +62,13 @@ resource 'MENU' (128, "File") {
 /* Main document window                                                   */
 /* ---------------------------------------------------------------------- */
 
-/* noGrowDocProc, not documentProc -- the board/keyboard layout is a
- * fixed size (see MARGIN etc. in main.c), so this was never meant to be
- * resizable. ChangeWindowAttributes(win, 0, kWindowResizableAttribute)
- * in main.c removes the functional resizing, but documentProc's own
- * frame still rendered a grow-box-shaped chrome element in the corner
- * regardless (a white square left over where the resize handle used to
- * be, confirmed by screenshot) -- noGrowDocProc is the classic WDEF
- * variant that never draws that chrome at all, fixing it at the root
- * instead of trying to suppress it at runtime. */
+/* zoomDocProc: the main window is deliberately resizable (user request,
+ * 2026-10-25), so the grow box and zoom box are wanted. The bounds below
+ * are the 100% size (DESIGN_W x DESIGN_H in main.c); the board, keys and
+ * fonts scale with the window. Other windows stay noGrowDocProc. */
 resource 'WIND' (128, "iWordle") {
-    { 0, 0, 558, 502 },
-    noGrowDocProc,
+    { 0, 0, 568, 502 },
+    zoomDocProc,
     visible,
     goAway,
     0,
