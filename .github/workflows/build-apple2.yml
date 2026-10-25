@@ -61,6 +61,12 @@ jobs:
           echo "---- header bytes ----"
           xxd build-apple2/IWORDLE | head -8
 
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
       - name: Download disk tools
         run: |
           mkdir -p tools-dl
