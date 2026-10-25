@@ -230,10 +230,10 @@ resource 'DITL' (203) {
 /* ---------------------------------------------------------------------- */
 
 resource 'vers' (1) {
-    0x01, 0x00, release, 0x00,
+    0x01, 0x10, release, 0x00,
     0,
-    "1.0",
-    "1.0, \0xA9 Castello Designs, 2026"
+    "1.1",
+    "1.1, \0xA9 Castello Designs, 2026"
 };
 
 /* 768 K preferred / 512 K minimum: the word lists are ~150 KB of static

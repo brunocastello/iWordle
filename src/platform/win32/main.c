@@ -696,7 +696,7 @@ static HFONT AboutFont(int dpi, int px, int weight)
 }
 
 static const struct { int y; int px; int bold; const char *text; } kAbout[] = {
-    {  64, 12, 1, "iWordle 1.0"                       },
+    {  64, 12, 1, "iWordle 1.1"                       },
     {  84, 10, 0, "A native Wordle clone for Windows" },
     { 112, 10, 1, "Bruno Castello"                    },
     { 132, 10, 0, "bfcastello@hotmail.com"            },
