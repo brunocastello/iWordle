@@ -1069,6 +1069,19 @@ static BOOL CreateMainWindow(int nCmdShow)
     return TRUE;
 }
 
+/* Watcom's C runtime copies the environment block at startup (__setenvp)
+ * from GetEnvironmentStrings. Under Win32s on Windows 3.1 that pointer comes
+ * back NULL and the copy faults before WinMain runs (0xC0000005 at
+ * __setenvp+0x1C, seen in 86Box). iWordle never reads the environment, so
+ * these replace the runtime's versions with no-ops on every Windows. */
+void __setenvp(void)
+{
+}
+
+void __freeenvp(void)
+{
+}
+
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow)
 {
     MSG msg;

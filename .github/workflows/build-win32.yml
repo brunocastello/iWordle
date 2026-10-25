@@ -74,6 +74,10 @@ jobs:
                 runtime windows=3.10 \
                 option map=IWORDLE.MAP
           ls -la
+          # The runtime's __setenvp faults under Win32s; main.c supplies
+          # no-op replacements, which must be the ones that got linked.
+          grep -E '__setenvp_|__freeenvp_' IWORDLE.MAP
+          grep -A3 'Module: main.obj' IWORDLE.MAP || true
 
       - name: Check relocations (Win32s)
         run: |
