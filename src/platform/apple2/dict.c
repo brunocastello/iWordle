@@ -5,7 +5,7 @@
 #include "wordle_engine.h"
 #include "dict.h"
 
-#define DICT_MAX_WORDS   10000
+#define DICT_MAX_WORDS   8700
 #define DICT_BUCKETS     676
 #define DICT_HEADER_SIZE 2038
 

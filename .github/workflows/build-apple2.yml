@@ -38,6 +38,7 @@ jobs:
         run: |
           CC65_HOME="$(dirname "$(dirname "$(readlink -f "$(command -v cl65)")")")"
           ls /usr/share/cc65/cfg/ | grep -i apple2 || true
+          cl65 --version 2>&1 | head -1
           cl65 -t apple2 -C apple2-hgr.cfg -Oirs -DWORDLE_EXTERNAL_DICTIONARY \
             -I src/core -m build-apple2/iwordle.map -o build-apple2/IWORDLE \
             src/core/wordle_engine.c src/core/wordle_stats.c src/platform/apple2/*.c

@@ -17,7 +17,7 @@ import re
 import struct
 import sys
 
-MAX_WORDS = 10000
+MAX_WORDS = 8700
 MAX_BUCKET = 200
 
 
