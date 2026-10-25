@@ -96,6 +96,9 @@ Mac ports: `GetTileRect`, `KeyboardRowLeft`, `GetLetterKeyRect`,
 right/bottom, built with `SetRect`).
 
 ### Window
+
+> **Update (user request):** the main window is now **resizable** (`WS_OVERLAPPEDWINDOW`, maximize allowed). Everything is scaled from the design units below by one aspect-preserving factor and centered; the minimum is 60% of the design size. The "non-resizable" wording below is superseded.
+
 - Class `"iWordleMain"`, `WNDCLASS` with `CS_HREDRAW | CS_VREDRAW` **not** set (fixed
   size) and no `CS_DBLCLKS`, so a fast second click arrives as another
   `WM_LBUTTONDOWN`. `hbrBackground = (HBRUSH)(COLOR_BTNFACE + 1)`. Icon is

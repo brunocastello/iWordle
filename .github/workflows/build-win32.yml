@@ -87,8 +87,9 @@ jobs:
           import sys
 
           ALLOWED_DLLS = {'KERNEL32.DLL', 'USER32.DLL', 'GDI32.DLL', 'COMCTL32.DLL'}
-          # 95/NT4+ or later APIs that don't exist on NT 3.51. A/W/ExA/ExW
-          # suffixes are stripped before comparing.
+          # 95/NT4+ or later APIs that don't exist on NT 3.51. Only a trailing
+          # A/W is stripped before comparing, so RegisterClassA doesn't match
+          # RegisterClassEx (the Ex variants are listed by their own name).
           FORBIDDEN = {
               'LoadImage', 'DrawEdge', 'DrawFrameControl', 'DrawState',
               'RegisterClassEx', 'GetSysColorBrush', 'GetMenuItemInfo',
@@ -133,8 +134,8 @@ jobs:
               if d.upper() not in ALLOWED_DLLS:
                   problems.append('disallowed DLL: ' + d)
           for d, f in imports:
-              base = re.sub(r'(Ex)?[AW]$', '', f)
-              if f in FORBIDDEN or base in FORBIDDEN or base + 'Ex' in FORBIDDEN:
+              base = re.sub(r'[AW]$', '', f)
+              if f in FORBIDDEN or base in FORBIDDEN:
                   problems.append('forbidden import: %s!%s' % (d, f))
 
           allow_path = sys.argv[2]

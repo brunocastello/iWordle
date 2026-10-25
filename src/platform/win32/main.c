@@ -24,9 +24,11 @@
 /* Board / keyboard layout                                                */
 /* ---------------------------------------------------------------------- */
 
-/* Client area is 356 x 398 (small enough for a 640x480 desktop with a
- * taskbar). The widest row (the bottom row: ENTER + 7 letters + BACK) sets
- * the width and everything else is centered within it. */
+/* The layout is designed at 356 x 398 (small enough for a 640x480 desktop
+ * with a taskbar). The widest row (the bottom row: ENTER + 7 letters + BACK)
+ * sets the width and everything else is centered within it. The window is
+ * resizable: every rect and font is scaled from these design units by
+ * gScale (per mille, aspect ratio kept) and centered in the client area. */
 #define MARGIN             10
 
 #define TILE_SIZE          38
@@ -47,6 +49,7 @@
 
 #define CLIENT_W           356
 #define CLIENT_H           398             /* 268 + 3*36 + 2*6 + 10 */
+#define MIN_SCALE          600             /* smallest window: 60% */
 
 static const char * const kKBRows[KB_ROW_COUNT] = {
     "QWERTYUIOP",
@@ -79,9 +82,15 @@ static WordleStatsBook gStats;
 static char gLastPlayerName[WORDLE_STATS_NAME_LEN + 1] = { 0 };
 static char gStatsPath[MAX_PATH + 16];
 
-static HFONT gTileFont;       /* Arial bold, 22px */
-static HFONT gKeyFont;        /* Arial bold, 14px */
-static HFONT gWideKeyFont;    /* Arial bold, 11px */
+/* Current scale (per mille) and where the scaled layout sits in the
+ * client area; set by UpdateLayout on every WM_SIZE. */
+static int gScale = 1000;
+static int gOffsetX = 0;
+static int gOffsetY = 0;
+
+static HFONT gTileFont;       /* Arial bold, 22px at 100% */
+static HFONT gKeyFont;        /* Arial bold, 14px at 100% */
+static HFONT gWideKeyFont;    /* Arial bold, 11px at 100% */
 
 /* Handed between PromptForPlayerName and NameDlgProc. */
 static char gDialogName[WORDLE_STATS_NAME_LEN + 1];
@@ -101,6 +110,9 @@ static BOOL PromptForPlayerName(char *outName);
 static void RecordGameResult(BOOL won);
 static void OnStatistics(void);
 
+static int ScaleLength(int v);
+static void ScaleRect(RECT *r);
+static void UpdateLayout(int clientW, int clientH);
 static void GetTileRect(short row, short col, RECT *outRect);
 static short KeyboardRowLeft(short row);
 static void GetLetterKeyRect(short row, short idx, RECT *outRect);
@@ -116,7 +128,7 @@ static void DrawKey(HDC hdc, const RECT *r, char letter);
 static void DrawWideKey(HDC hdc, const RECT *r, const char *label);
 static void DrawBoard(HDC hdc);
 static void DrawKeyboard(HDC hdc);
-static void PaintClient(HDC hdc);
+static void PaintClient(HDC hdc, int w, int h);
 static void OnPaint(HWND hwnd);
 static void InvalidateRow(short row);
 static void RedrawAll(void);
@@ -143,6 +155,7 @@ static void HandleChar(WPARAM wParam, LPARAM lParam);
 static void UpdateGameMenuState(void);
 static void HandleCommand(int id);
 static LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
+static void OnGetMinMaxInfo(MINMAXINFO *info);
 static HFONT MakeArialBold(int height);
 static void CreateFonts(void);
 static void DeleteFonts(void);
@@ -152,11 +165,50 @@ static BOOL CreateMainWindow(int nCmdShow);
 /* Layout helpers                                                          */
 /* ---------------------------------------------------------------------- */
 
+static int ScaleLength(int v)
+{
+    return MulDiv(v, gScale, 1000);
+}
+
+/* Design units -> client pixels. Edges are scaled independently, so
+ * neighboring cells keep a consistent gap at every size. */
+static void ScaleRect(RECT *r)
+{
+    r->left = gOffsetX + ScaleLength(r->left);
+    r->top = gOffsetY + ScaleLength(r->top);
+    r->right = gOffsetX + ScaleLength(r->right);
+    r->bottom = gOffsetY + ScaleLength(r->bottom);
+}
+
+/* Picks the largest scale at which the whole design fits the client area,
+ * centers it, and rebuilds the fonts at that scale. */
+static void UpdateLayout(int clientW, int clientH)
+{
+    int sx, sy, scale;
+
+    if (clientW <= 0 || clientH <= 0) return;
+
+    sx = MulDiv(clientW, 1000, CLIENT_W);
+    sy = MulDiv(clientH, 1000, CLIENT_H);
+    scale = (sx < sy) ? sx : sy;
+    if (scale < 1) scale = 1;
+
+    gOffsetX = (clientW - MulDiv(CLIENT_W, scale, 1000)) / 2;
+    gOffsetY = (clientH - MulDiv(CLIENT_H, scale, 1000)) / 2;
+
+    if (scale != gScale || gTileFont == NULL) {
+        gScale = scale;
+        DeleteFonts();
+        CreateFonts();
+    }
+}
+
 static void GetTileRect(short row, short col, RECT *outRect)
 {
     int top = BOARD_TOP + row * (TILE_SIZE + TILE_GAP);
     int left = BOARD_LEFT + col * (TILE_SIZE + TILE_GAP);
     SetRect(outRect, left, top, left + TILE_SIZE, top + TILE_SIZE);
+    ScaleRect(outRect);
 }
 
 static short KeyboardRowLeft(short row)
@@ -173,6 +225,7 @@ static void GetLetterKeyRect(short row, short idx, RECT *outRect)
     int top = KEYBOARD_TOP + row * (KEY_H + KEY_ROW_GAP);
     int left = KeyboardRowLeft(row) + idx * (KEY_W + KEY_GAP);
     SetRect(outRect, left, top, left + KEY_W, top + KEY_H);
+    ScaleRect(outRect);
 }
 
 static void GetBackspaceKeyRect(RECT *outRect)
@@ -180,6 +233,7 @@ static void GetBackspaceKeyRect(RECT *outRect)
     int top = KEYBOARD_TOP + 2 * (KEY_H + KEY_ROW_GAP);
     int left = KB_ROW2_LEFT + 7 * (KEY_W + KEY_GAP);
     SetRect(outRect, left, top, left + KB_WIDE_KEY_WIDTH, top + KEY_H);
+    ScaleRect(outRect);
 }
 
 /* ENTER sits left of Z, mirroring BACK on the right (as in Wordle), so
@@ -189,6 +243,7 @@ static void GetEnterKeyRect(RECT *outRect)
     int top = KEYBOARD_TOP + 2 * (KEY_H + KEY_ROW_GAP);
     int left = KB_ROW2_LEFT - KEY_GAP - KB_WIDE_KEY_WIDTH;
     SetRect(outRect, left, top, left + KB_WIDE_KEY_WIDTH, top + KEY_H);
+    ScaleRect(outRect);
 }
 
 /* ---------------------------------------------------------------------- */
@@ -348,13 +403,13 @@ static void DrawKeyboard(HDC hdc)
     DrawWideKey(hdc, &r, "ENTER");
 }
 
-/* Paints the whole client area into hdc. */
-static void PaintClient(HDC hdc)
+/* Paints the whole client area (w x h) into hdc. */
+static void PaintClient(HDC hdc, int w, int h)
 {
     RECT all;
     HBRUSH bg = CreateSolidBrush(GetSysColor(COLOR_BTNFACE));
 
-    SetRect(&all, 0, 0, CLIENT_W, CLIENT_H);
+    SetRect(&all, 0, 0, w, h);
     FillRect(hdc, &all, bg);
     DeleteObject(bg);
 
@@ -368,22 +423,28 @@ static void PaintClient(HDC hdc)
 static void OnPaint(HWND hwnd)
 {
     PAINTSTRUCT ps;
+    RECT client;
     HDC hdc = BeginPaint(hwnd, &ps);
     HDC mem = CreateCompatibleDC(hdc);
     HBITMAP bmp = NULL;
     HBITMAP oldBmp = NULL;
+    int w, h;
 
-    if (mem != NULL) {
-        bmp = CreateCompatibleBitmap(hdc, CLIENT_W, CLIENT_H);
+    GetClientRect(hwnd, &client);
+    w = client.right;
+    h = client.bottom;
+
+    if (mem != NULL && w > 0 && h > 0) {
+        bmp = CreateCompatibleBitmap(hdc, w, h);
     }
 
     if (mem != NULL && bmp != NULL) {
         oldBmp = (HBITMAP)SelectObject(mem, bmp);
-        PaintClient(mem);
-        BitBlt(hdc, 0, 0, CLIENT_W, CLIENT_H, mem, 0, 0, SRCCOPY);
+        PaintClient(mem, w, h);
+        BitBlt(hdc, 0, 0, w, h, mem, 0, 0, SRCCOPY);
         SelectObject(mem, oldBmp);
     } else {
-        PaintClient(hdc);
+        PaintClient(hdc, w, h);
     }
 
     if (bmp != NULL) DeleteObject(bmp);
@@ -394,15 +455,14 @@ static void OnPaint(HWND hwnd)
 /* Per keystroke only the row being typed changes. */
 static void InvalidateRow(short row)
 {
-    RECT r;
+    RECT first, last;
 
     if (row < 0 || row >= WORDLE_MAX_GUESSES) return;
 
-    r.left = BOARD_LEFT;
-    r.right = BOARD_LEFT + WORDLE_WORD_LENGTH * (TILE_SIZE + TILE_GAP) - TILE_GAP;
-    r.top = BOARD_TOP + row * (TILE_SIZE + TILE_GAP);
-    r.bottom = r.top + TILE_SIZE;
-    InvalidateRect(gWindow, &r, FALSE);
+    GetTileRect(row, 0, &first);
+    GetTileRect(row, WORDLE_WORD_LENGTH - 1, &last);
+    first.right = last.right;
+    InvalidateRect(gWindow, &first, FALSE);
 }
 
 /* Full repaint, forced to the screen now so the final colors are visible
@@ -872,6 +932,17 @@ static LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM l
         case WM_ERASEBKGND:
             return 1;   /* OnPaint covers the whole client */
 
+        case WM_SIZE:
+            if (wParam != SIZE_MINIMIZED) {
+                UpdateLayout((int)LOWORD(lParam), (int)HIWORD(lParam));
+                InvalidateRect(hwnd, NULL, FALSE);
+            }
+            return 0;
+
+        case WM_GETMINMAXINFO:
+            OnGetMinMaxInfo((MINMAXINFO *)lParam);
+            return 0;
+
         case WM_CHAR:
             HandleChar(wParam, lParam);
             return 0;
@@ -899,6 +970,19 @@ static LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM l
 /* Startup                                                                 */
 /* ---------------------------------------------------------------------- */
 
+/* The window can't shrink below MIN_SCALE of the design size, where the
+ * key labels are still readable. */
+static void OnGetMinMaxInfo(MINMAXINFO *info)
+{
+    RECT frame;
+
+    SetRect(&frame, 0, 0, MulDiv(CLIENT_W, MIN_SCALE, 1000),
+            MulDiv(CLIENT_H, MIN_SCALE, 1000));
+    AdjustWindowRect(&frame, WS_OVERLAPPEDWINDOW, TRUE);
+    info->ptMinTrackSize.x = frame.right - frame.left;
+    info->ptMinTrackSize.y = frame.bottom - frame.top;
+}
+
 static HFONT MakeArialBold(int height)
 {
     return CreateFont(height, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
@@ -908,9 +992,9 @@ static HFONT MakeArialBold(int height)
 
 static void CreateFonts(void)
 {
-    gTileFont = MakeArialBold(-22);
-    gKeyFont = MakeArialBold(-14);
-    gWideKeyFont = MakeArialBold(-11);
+    gTileFont = MakeArialBold(-ScaleLength(22));
+    gKeyFont = MakeArialBold(-ScaleLength(14));
+    gWideKeyFont = MakeArialBold(-ScaleLength(11));
 }
 
 static void DeleteFonts(void)
@@ -918,19 +1002,24 @@ static void DeleteFonts(void)
     if (gTileFont != NULL) DeleteObject(gTileFont);
     if (gKeyFont != NULL) DeleteObject(gKeyFont);
     if (gWideKeyFont != NULL) DeleteObject(gWideKeyFont);
+    gTileFont = NULL;
+    gKeyFont = NULL;
+    gWideKeyFont = NULL;
 }
 
-/* Registers the class and creates the fixed-size main window, centered in
- * the work area (the whole screen on NT 3.51, where SPI_GETWORKAREA fails). */
+/* Registers the class and creates the resizable main window at its design
+ * size (shrunk to fit if the work area is smaller), centered in the work
+ * area (the whole screen on NT 3.51, where SPI_GETWORKAREA fails). */
 static BOOL CreateMainWindow(int nCmdShow)
 {
     WNDCLASS wc;
-    DWORD style = WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX;
+    DWORD style = WS_OVERLAPPEDWINDOW;
     RECT frame, work;
-    int x, y, w, h;
+    int x, y, w, h, extraW, extraH, scale, sx, sy;
 
-    /* No CS_HREDRAW/CS_VREDRAW (fixed size) and no CS_DBLCLKS, so a fast
-     * second click arrives as another WM_LBUTTONDOWN. */
+    /* No CS_HREDRAW/CS_VREDRAW (WM_SIZE invalidates everything itself) and
+     * no CS_DBLCLKS, so a fast second click arrives as another
+     * WM_LBUTTONDOWN. */
     wc.style = 0;
     wc.lpfnWndProc = MainWndProc;
     wc.cbClsExtra = 0;
@@ -943,14 +1032,24 @@ static BOOL CreateMainWindow(int nCmdShow)
     wc.lpszClassName = "iWordleMain";
     if (!RegisterClass(&wc)) return FALSE;
 
-    SetRect(&frame, 0, 0, CLIENT_W, CLIENT_H);
-    AdjustWindowRect(&frame, style, TRUE);
-    w = frame.right - frame.left;
-    h = frame.bottom - frame.top;
-
     if (!SystemParametersInfo(SPI_GETWORKAREA, 0, &work, 0)) {
         SetRect(&work, 0, 0, GetSystemMetrics(SM_CXSCREEN), GetSystemMetrics(SM_CYSCREEN));
     }
+
+    SetRect(&frame, 0, 0, CLIENT_W, CLIENT_H);
+    AdjustWindowRect(&frame, style, TRUE);
+    extraW = (frame.right - frame.left) - CLIENT_W;
+    extraH = (frame.bottom - frame.top) - CLIENT_H;
+
+    scale = 1000;
+    sx = MulDiv((work.right - work.left) - extraW, 1000, CLIENT_W);
+    sy = MulDiv((work.bottom - work.top) - extraH, 1000, CLIENT_H);
+    if (sx < scale) scale = sx;
+    if (sy < scale) scale = sy;
+    if (scale < MIN_SCALE) scale = MIN_SCALE;
+
+    w = MulDiv(CLIENT_W, scale, 1000) + extraW;
+    h = MulDiv(CLIENT_H, scale, 1000) + extraH;
     x = work.left + ((work.right - work.left) - w) / 2;
     y = work.top + ((work.bottom - work.top) - h) / 2;
     if (x < 0) x = 0;
