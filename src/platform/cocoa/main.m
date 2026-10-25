@@ -257,7 +257,7 @@ static void ShowRanking(void)
 
     NSScrollView *scroll = [[NSScrollView alloc] initWithFrame:NSMakeRect(20, 56, 380, 224)];
     scroll.hasVerticalScroller = YES;
-    scroll.borderType = NSBezierBorder;
+    scroll.borderType = NSBezelBorder;
 
     NSTableView *table = [[NSTableView alloc] initWithFrame:scroll.bounds];
     [table addTableColumn:MakeColumn(@"name", @"Name", 140, NO)];
