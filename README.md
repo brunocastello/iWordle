@@ -9,9 +9,14 @@ independent builds ship from this one repo:
 - **Mac OS 9** (`src/platform/macos9/`) — built with the
   [Retro68](https://github.com/autc04/Retro68) cross-toolchain, targeting
   Carbon on Mac OS 9.x PowerPC hardware.
-- **Mac OS X 10.0–10.5** (`src/platform/macosx/`) — built with a
+- **Mac OS X 10.4–10.14, PowerPC and Intel** (`src/platform/macosx/`) — a
+  classic Universal Binary: the PowerPC half is built with a
   `powerpc-apple-darwin8` GCC cross-compiler against Apple's real
-  `MacOSX10.4u.sdk`, producing a genuine Mach-O `.app` bundle.
+  `MacOSX10.4u.sdk`, the Intel (i386) half with `clang` and cctools' `ld64`
+  against a full Universal 10.4u SDK, and the two are joined with `lipo` into
+  one genuine Mach-O `.app` bundle. It's 32-bit, so macOS 10.15+ uses the
+  Cocoa build below. On Snow Leopard and later it runs natively on Intel, with
+  no Rosetta.
 - **Modern macOS 11+** (`src/platform/cocoa/`) — a native AppKit app (one
   Objective-C file, ARC, no nibs) built with `clang` on a `macos-latest`
   runner as a Universal 2 binary (Intel `x86_64` + Apple Silicon `arm64`).
@@ -149,10 +154,10 @@ containing:
   emulator's host-file-sharing can mount directly.
 - `iWordle.bin` - a MacBinary-encoded copy of the app.
 
-**Mac OS X** workflow runs upload an `iWordle-mac-os-x-ppc` artifact
+**Mac OS X** workflow runs upload an `iWordle-mac-os-x-universal` artifact
 containing:
 
-- `iWordle-mac-os-x-ppc.zip` - the `iWordle.app` bundle, zipped.
+- `iWordle-mac-os-x-universal.zip` - the Universal `iWordle.app` bundle, zipped.
 - `iWordle.dmg` - a disk image containing the app, ready to mount and drag
   to Applications.
 
@@ -193,9 +198,10 @@ Mac OS 9 will mount `iWordle.dsk` as an ordinary HFS volume on the desktop.
 Drag `iWordle` onto your hard disk (or launch it straight off the mounted
 volume) and run it.
 
-**Mac OS X**: mount `iWordle.dmg` inside a Mac OS X 10.0–10.5 PowerPC
-install running under `qemu-system-ppc`, and drag `iWordle.app` to
-Applications (or run it directly off the mounted volume).
+**Mac OS X**: mount `iWordle.dmg` inside a Mac OS X 10.4–10.5 PowerPC
+install running under `qemu-system-ppc`, or in an Intel 10.4–10.14 VM (e.g.
+Snow Leopard), and drag `iWordle.app` to Applications (or run it directly off
+the mounted volume). It's a Universal Binary, so Intel Macs run it natively.
 
 ## Testing in MAME (SE/30)
 
